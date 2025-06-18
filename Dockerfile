@@ -4,19 +4,17 @@ FROM node:18
 # Set working directory
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Copy package files
 COPY package*.json ./
-RUN npm install
 
-# ✅ Install Nest CLI globally
-RUN npm install -g @nestjs/cli
-RUN npm install --include=dev
+# Install all dependencies (including devDependencies needed for build)
+RUN npm install
 
 # Copy rest of the app
 COPY . .
 
-# Build the NestJS project
-RUN nest build
+# Build the NestJS project using the script from package.json
+RUN npm run build
 
 # Expose backend port
 EXPOSE 3000
