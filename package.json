@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "main": "dist/main.js",
   "scripts": {
-    "start": "nest start",
+    "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
-    "build": "npx nest build"
+    "build": "nest build"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -23,5 +23,8 @@
     "@types/express": "^5.0.3",
     "@types/multer": "^1.4.13",
     "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
