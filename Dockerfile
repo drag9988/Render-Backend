@@ -8,14 +8,14 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
+# ✅ Install Nest CLI globally
+RUN npm install -g @nestjs/cli
+
 # Copy rest of the app
 COPY . .
 
-# Give permission to nest binary
-RUN chmod +x ./node_modules/.bin/nest
-
-# Build the NestJS project using npx
-RUN npx nest build
+# Build the NestJS project
+RUN nest build
 
 # Expose backend port
 EXPOSE 3000
