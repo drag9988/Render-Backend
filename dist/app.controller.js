@@ -11,11 +11,13 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c;
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
+const app_service_1 = require("./app.service");
+const multer_1 = require("multer");
 let AppController = class AppController {
     constructor(appService) {
         this.appService = appService;
@@ -38,7 +40,7 @@ __decorate([
     __param(0, (0, common_1.UploadedFile)()),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_b = typeof multer_1.Multer !== "undefined" && multer_1.Multer.File) === "function" ? _b : Object, Object]),
+    __metadata("design:paramtypes", [typeof (_a = typeof multer_1.File !== "undefined" && multer_1.File) === "function" ? _a : Object, Object]),
     __metadata("design:returntype", Promise)
 ], AppController.prototype, "convertDocToPdf", null);
 __decorate([
@@ -47,11 +49,11 @@ __decorate([
     __param(0, (0, common_1.UploadedFile)()),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_c = typeof multer_1.Multer !== "undefined" && multer_1.Multer.File) === "function" ? _c : Object, Object]),
+    __metadata("design:paramtypes", [typeof (_b = typeof multer_1.File !== "undefined" && multer_1.File) === "function" ? _b : Object, Object]),
     __metadata("design:returntype", Promise)
 ], AppController.prototype, "compressPdf", null);
 exports.AppController = AppController = __decorate([
     (0, common_1.Controller)(),
-    __metadata("design:paramtypes", [typeof (_a = typeof AppService !== "undefined" && AppService) === "function" ? _a : Object])
+    __metadata("design:paramtypes", [app_service_1.AppService])
 ], AppController);
 //# sourceMappingURL=app.controller.js.map

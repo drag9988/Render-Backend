@@ -1,4 +1,6 @@
+import { File } from 'multer';
 export declare class AppService {
-    convertLibreOffice(file: Multer.File, format: string): Promise<Buffer>;
-    compressPdf(file: Multer.File): Promise<Buffer>;
+    private readonly execAsync;
+    convertLibreOffice(file: File, format: string): Promise<Buffer>;
+    compressPdf(file: File): Promise<Buffer>;
 }

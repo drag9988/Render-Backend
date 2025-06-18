@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { File } from 'multer';
+import * as multer from 'multer';
 
 @Injectable()
 export class AppService {
   private readonly execAsync = promisify(exec);
 
-  async convertLibreOffice(file: File, format: string): Promise<Buffer> {
+  async convertLibreOffice(file: Express.Multer.File, format: string): Promise<Buffer> {
     const timestamp = Date.now();
     const tempInput = `/tmp/${timestamp}_${file.originalname}`;
     const tempOutput = tempInput.replace(/\.[^.]+$/, `.${format}`);
@@ -26,7 +26,7 @@ export class AppService {
     return result;
   }
 
-  async compressPdf(file: File): Promise<Buffer> {
+  async compressPdf(file: Express.Multer.File): Promise<Buffer> {
     const timestamp = Date.now();
     const input = `/tmp/${timestamp}_input.pdf`;
     const output = `/tmp/${timestamp}_output.pdf`;

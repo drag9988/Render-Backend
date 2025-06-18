@@ -2,7 +2,7 @@ import { Controller, Post, UploadedFile, UseInterceptors, Res } from '@nestjs/co
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { AppService } from './app.service';
-import { File } from 'multer';
+import * as multer from 'multer';
 
 @Controller()
 export class AppController {
@@ -11,7 +11,7 @@ export class AppController {
   @Post('convert-doc-to-pdf')
   @UseInterceptors(FileInterceptor('file'))
   async convertDocToPdf(
-    @UploadedFile() file: File,
+    @UploadedFile() file: Express.Multer.File,
     @Res() res: Response,
   ) {
     const output = await this.appService.convertLibreOffice(file, 'pdf');
@@ -22,7 +22,7 @@ export class AppController {
   @Post('compress-pdf')
   @UseInterceptors(FileInterceptor('file'))
   async compressPdf(
-    @UploadedFile() file: File,
+    @UploadedFile() file: Express.Multer.File,
     @Res() res: Response,
   ) {
     const output = await this.appService.compressPdf(file);
