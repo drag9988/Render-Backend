@@ -10,6 +10,7 @@ RUN npm install
 
 # ✅ Install Nest CLI globally
 RUN npm install -g @nestjs/cli
+RUN npm install --include=dev
 
 # Copy rest of the app
 COPY . .
