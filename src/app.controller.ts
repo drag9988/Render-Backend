@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
+import { Express } from 'express'; // ✅ Add this line to resolve type errors
 import { AppService } from './app.service';
 
 @Controller()
