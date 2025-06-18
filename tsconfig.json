@@ -11,6 +11,6 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "incremental": true,
-    "types": ["node", "express", "multer"]  // ✅ Add this line
+    "types": ["node"]  // ✅ Add this line
   }
 }
