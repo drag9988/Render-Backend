@@ -13,6 +13,9 @@ RUN npm install
 # Copy rest of the app
 COPY . .
 
+# Make nest command executable
+RUN chmod +x node_modules/.bin/nest
+
 # Build the NestJS project using the script from package.json
 RUN npm run build
 
