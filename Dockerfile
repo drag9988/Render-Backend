@@ -1,15 +1,24 @@
+# Use official Node.js LTS image
 FROM node:18
 
-RUN apt-get update && \
-    apt-get install -y libreoffice ghostscript && \
-    apt-get clean
-
+# Set working directory
 WORKDIR /app
 
+# Copy package files and install dependencies
 COPY package*.json ./
 RUN npm install
-COPY . .
-RUN npm run build
 
+# Copy rest of the app
+COPY . .
+
+# Give permission to nest binary
+RUN chmod +x ./node_modules/.bin/nest
+
+# Build the NestJS project using npx
+RUN npx nest build
+
+# Expose backend port
 EXPOSE 3000
-CMD ["npm", "run", "start:prod"]
+
+# Run app in production mode
+CMD ["node", "dist/main"]
