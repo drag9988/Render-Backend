@@ -11,12 +11,11 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c, _d;
+var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppController = void 0;
 const common_1 = require("@nestjs/common");
 const platform_express_1 = require("@nestjs/platform-express");
-const app_service_1 = require("./app.service");
 let AppController = class AppController {
     constructor(appService) {
         this.appService = appService;
@@ -34,25 +33,25 @@ let AppController = class AppController {
 };
 exports.AppController = AppController;
 __decorate([
-    (0, common_1.Post)('convert/doc-to-pdf'),
+    (0, common_1.Post)('convert-doc-to-pdf'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
     __param(0, (0, common_1.UploadedFile)()),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_b = typeof express_1.Express !== "undefined" && (_a = express_1.Express.Multer) !== void 0 && _a.File) === "function" ? _b : Object, Object]),
+    __metadata("design:paramtypes", [typeof (_b = typeof multer_1.Multer !== "undefined" && multer_1.Multer.File) === "function" ? _b : Object, Object]),
     __metadata("design:returntype", Promise)
 ], AppController.prototype, "convertDocToPdf", null);
 __decorate([
-    (0, common_1.Post)('compress/pdf'),
+    (0, common_1.Post)('compress-pdf'),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file')),
     __param(0, (0, common_1.UploadedFile)()),
     __param(1, (0, common_1.Res)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_d = typeof express_1.Express !== "undefined" && (_c = express_1.Express.Multer) !== void 0 && _c.File) === "function" ? _d : Object, Object]),
+    __metadata("design:paramtypes", [typeof (_c = typeof multer_1.Multer !== "undefined" && multer_1.Multer.File) === "function" ? _c : Object, Object]),
     __metadata("design:returntype", Promise)
 ], AppController.prototype, "compressPdf", null);
 exports.AppController = AppController = __decorate([
     (0, common_1.Controller)(),
-    __metadata("design:paramtypes", [app_service_1.AppService])
+    __metadata("design:paramtypes", [typeof (_a = typeof AppService !== "undefined" && AppService) === "function" ? _a : Object])
 ], AppController);
 //# sourceMappingURL=app.controller.js.map

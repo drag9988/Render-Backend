@@ -2,18 +2,20 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { Multer } from 'multer'; // <--- Added import statement
+import { File } from 'multer';
 
 @Injectable()
 export class AppService {
-  async convertLibreOffice(file: Multer.File, format: string): Promise<Buffer> {
+  private readonly execAsync = promisify(exec);
+
+  async convertLibreOffice(file: File, format: string): Promise<Buffer> {
     const timestamp = Date.now();
     const tempInput = `/tmp/${timestamp}_${file.originalname}`;
     const tempOutput = tempInput.replace(/\.[^.]+$/, `.${format}`);
 
     await fs.writeFile(tempInput, file.buffer);
 
-    await execAsync(
+    await this.execAsync(
       `libreoffice --headless --convert-to ${format} --outdir /tmp ${tempInput}`,
     );
 
@@ -24,14 +26,14 @@ export class AppService {
     return result;
   }
 
-  async compressPdf(file: Multer.File): Promise<Buffer> {
+  async compressPdf(file: File): Promise<Buffer> {
     const timestamp = Date.now();
     const input = `/tmp/${timestamp}_input.pdf`;
     const output = `/tmp/${timestamp}_output.pdf`;
 
     await fs.writeFile(input, file.buffer);
 
-    await execAsync(
+    await this.execAsync(
       `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile=${output} ${input}`,
     );
 
