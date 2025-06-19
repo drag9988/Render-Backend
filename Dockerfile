@@ -1,6 +1,13 @@
 # Use official Node.js LTS image
 FROM node:18
 
+# Install LibreOffice and Ghostscript for document conversion and PDF compression
+RUN apt-get update && apt-get install -y \
+    libreoffice \
+    ghostscript \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
