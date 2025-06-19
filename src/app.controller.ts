@@ -1,12 +1,53 @@
-import { Controller, Post, UploadedFile, UseInterceptors, Res, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, UploadedFile, UseInterceptors, Res, Body, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { AppService } from './app.service';
 import * as multer from 'multer';
+import * as os from 'os';
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
+
+  // Health check endpoint
+  @Get()
+  healthCheck(@Res() res: Response) {
+    try {
+      const healthInfo = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        hostname: os.hostname(),
+        network: Object.values(os.networkInterfaces())
+          .flat()
+          .filter(iface => iface && !iface.internal)
+          .map(iface => ({
+            address: iface.address,
+            family: iface.family,
+            netmask: iface.netmask,
+          })),
+        memory: {
+          total: os.totalmem(),
+          free: os.freemem(),
+        },
+        env: {
+          nodeEnv: process.env.NODE_ENV || 'development',
+          port: process.env.PORT || '3000',
+        },
+      };
+      
+      return res.status(200).json(healthInfo);
+    } catch (error) {
+      console.error('Health check error:', error.message);
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
+  }
+  
+  // Specific health check endpoint
+  @Get('health')
+  health(@Res() res: Response) {
+    return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+  }
 
   // Word to PDF conversion
   @Post('convert-word-to-pdf')
