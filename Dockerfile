@@ -29,5 +29,5 @@ RUN npm run build
 # Expose backend port
 EXPOSE 3000
 
-# Run app in production mode
-CMD ["node", "dist/main"]
+# Set command to run the application
+CMD ["npm", "run", "start:prod"]

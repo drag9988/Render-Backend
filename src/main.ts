@@ -23,7 +23,8 @@ async function bootstrap() {
   // Use PORT from environment variables (for Railway) or default to 3000
   const port = process.env.PORT || 3000;
   
-  await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  // Listen on IPv6 (::) which also supports IPv4 through IPv4-mapped IPv6 addresses
+  await app.listen(port, '::');
+  console.log(`Server listening on [::]:${port}`);
 }
 bootstrap();
