@@ -1,11 +1,15 @@
 # Use official Node.js LTS image
 FROM node:18
 
-# Install LibreOffice, Ghostscript, and curl for document conversion, PDF compression, and healthcheck
+# Install LibreOffice, Ghostscript, poppler-utils, and curl for enhanced document conversion
 RUN apt-get update && apt-get install -y \
     libreoffice \
     ghostscript \
+    poppler-utils \
     curl \
+    imagemagick \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

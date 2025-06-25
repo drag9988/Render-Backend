@@ -154,7 +154,32 @@ export class AppController {
       } else if (error.message.includes('complex formatting')) {
         return res.status(422).json({ 
           error: 'Complex PDF format', 
-          message: 'This PDF contains complex formatting that cannot be converted. Try using a text-based PDF instead of a scanned document.' 
+          message: 'This PDF contains complex formatting that cannot be converted. Try using a text-based PDF instead of a scanned document.',
+          suggestions: [
+            'Ensure the PDF contains selectable text (not a scanned image)',
+            'Try with a simpler PDF with basic formatting',
+            'Consider using a PDF with fewer images and complex layouts'
+          ]
+        });
+      } else if (error.message.includes('scanned PDF')) {
+        return res.status(422).json({ 
+          error: 'Scanned PDF detected', 
+          message: 'This appears to be a scanned PDF (image-based) which cannot be converted to editable Word format.',
+          suggestions: [
+            'Use OCR software to convert the scanned PDF to text first',
+            'Try with a text-based PDF instead',
+            'Export the original document directly to Word if possible'
+          ]
+        });
+      } else if (error.message.includes('insufficient text')) {
+        return res.status(422).json({ 
+          error: 'Insufficient text content', 
+          message: 'This PDF does not contain enough text content for conversion.',
+          suggestions: [
+            'Verify the PDF contains readable text',
+            'Check if the PDF is password-protected',
+            'Try with a different PDF file'
+          ]
         });
       } else {
         return res.status(500).json({ 
@@ -206,7 +231,22 @@ export class AppController {
       } else if (error.message.includes('complex formatting')) {
         return res.status(422).json({ 
           error: 'Complex PDF format', 
-          message: 'This PDF may not contain tabular data suitable for Excel conversion.' 
+          message: 'This PDF may not contain tabular data suitable for Excel conversion.',
+          suggestions: [
+            'Ensure the PDF contains tables or structured data',
+            'Try with a PDF that has clear tabular layout',
+            'Consider manual copy-paste for complex data structures'
+          ]
+        });
+      } else if (error.message.includes('scanned PDF')) {
+        return res.status(422).json({ 
+          error: 'Scanned PDF detected', 
+          message: 'This appears to be a scanned PDF which cannot be converted to Excel format.',
+          suggestions: [
+            'Use OCR software first to make the PDF text-selectable',
+            'Try with a text-based PDF containing tables',
+            'Export data directly from the original source if possible'
+          ]
         });
       } else {
         return res.status(500).json({ 
@@ -258,7 +298,22 @@ export class AppController {
       } else if (error.message.includes('complex formatting')) {
         return res.status(422).json({ 
           error: 'Complex PDF format', 
-          message: 'This PDF contains complex formatting that may not convert well to PowerPoint slides.' 
+          message: 'This PDF contains complex formatting that may not convert well to PowerPoint slides.',
+          suggestions: [
+            'Try with a PDF that has clear page-by-page content',
+            'Ensure the PDF has simple layout without complex graphics',
+            'Consider breaking down the PDF into smaller sections'
+          ]
+        });
+      } else if (error.message.includes('scanned PDF')) {
+        return res.status(422).json({ 
+          error: 'Scanned PDF detected', 
+          message: 'This appears to be a scanned PDF which cannot be converted to PowerPoint format.',
+          suggestions: [
+            'Use OCR software to make the PDF text-selectable first',
+            'Try with a text-based PDF',
+            'Export slides directly from the original presentation if possible'
+          ]
         });
       } else {
         return res.status(500).json({ 
@@ -267,6 +322,87 @@ export class AppController {
         });
       }
     }
+  }
+
+  // PDF analysis endpoint - check if PDF is suitable for conversion
+  @Post('analyze-pdf')
+  @UseInterceptors(FileInterceptor('file'))
+  async analyzePdf(
+    @UploadedFile() file: Express.Multer.File,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      
+      // Validate file type
+      if (file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+      }
+
+      // Save file temporarily for analysis
+      const timestamp = Date.now();
+      const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
+      const tempInput = `${tempDir}/${timestamp}_analysis.pdf`;
+      
+      await require('fs').promises.writeFile(tempInput, file.buffer);
+      
+      // Analyze the PDF
+      const analysis = await this.appService.analyzePdfFile(tempInput);
+      
+      // Clean up
+      await require('fs').promises.unlink(tempInput).catch(() => {});
+      
+      res.json({
+        filename: file.originalname,
+        size: file.size,
+        analysis: analysis,
+        recommendations: this.getConversionRecommendations(analysis)
+      });
+      
+    } catch (error) {
+      console.error('PDF analysis error:', error.message);
+      res.status(500).json({ error: 'Failed to analyze PDF', message: error.message });
+    }
+  }
+
+  private getConversionRecommendations(analysis: any): any {
+    const recommendations = {
+      canConvertToWord: true,
+      canConvertToExcel: true,
+      canConvertToPowerPoint: true,
+      warnings: [],
+      suggestions: []
+    };
+
+    if (analysis.isScanned) {
+      recommendations.canConvertToWord = false;
+      recommendations.canConvertToExcel = false;
+      recommendations.canConvertToPowerPoint = false;
+      recommendations.warnings.push('This appears to be a scanned PDF (image-based)');
+      recommendations.suggestions.push('Use OCR software to make the PDF text-selectable first');
+    }
+
+    if (analysis.isProtected) {
+      recommendations.canConvertToWord = false;
+      recommendations.canConvertToExcel = false;
+      recommendations.canConvertToPowerPoint = false;
+      recommendations.warnings.push('This PDF appears to be password-protected or restricted');
+      recommendations.suggestions.push('Remove password protection before conversion');
+    }
+
+    if (analysis.hasComplexLayout) {
+      recommendations.warnings.push('Complex layout detected - conversion quality may vary');
+      recommendations.suggestions.push('Simpler PDFs generally convert better');
+    }
+
+    if (analysis.pageCount > 50) {
+      recommendations.warnings.push('Large PDF detected - conversion may take longer');
+      recommendations.suggestions.push('Consider splitting into smaller files for faster processing');
+    }
+
+    return recommendations;
   }
 
   // PDF compression with quality options

@@ -88,14 +88,20 @@ export class AppService {
   private async convertPdfWithLibreOffice(tempInput: string, tempOutput: string, format: string, tempDir: string): Promise<Buffer> {
     console.log(`Converting PDF to ${format} with enhanced options`);
     
+    // First, analyze the PDF to determine the best conversion strategy
+    const pdfInfo = await this.analyzePdf(tempInput);
+    console.log(`PDF Analysis: ${JSON.stringify(pdfInfo)}`);
+    
     // Try multiple LibreOffice options for better PDF conversion
     const commands = [
+      // Standard conversion with writer import
+      `libreoffice --headless --convert-to ${format} --infilter="writer_pdf_import" --outdir ${tempDir} ${tempInput}`,
       // Standard conversion
       `libreoffice --headless --convert-to ${format} --outdir ${tempDir} ${tempInput}`,
-      // With writer import filter for better text extraction
-      `libreoffice --headless --convert-to ${format} --infilter="writer_pdf_import" --outdir ${tempDir} ${tempInput}`,
       // Alternative approach with draw (sometimes works better for complex PDFs)
-      `libreoffice --headless --draw --convert-to ${format} --outdir ${tempDir} ${tempInput}`
+      `libreoffice --headless --draw --convert-to ${format} --outdir ${tempDir} ${tempInput}`,
+      // Writer-specific conversion for text-heavy PDFs
+      `libreoffice --headless --writer --convert-to ${format} --outdir ${tempDir} ${tempInput}`,
     ];
 
     let lastError = '';
@@ -105,7 +111,7 @@ export class AppService {
       console.log(`Attempt ${i + 1}: ${command}`);
       
       try {
-        const { stdout, stderr } = await this.execAsync(command, { timeout: 90000 }); // 90 second timeout
+        const { stdout, stderr } = await this.execAsync(command, { timeout: 120000 }); // 2 minute timeout
         
         if (stdout) {
           console.log(`LibreOffice output (attempt ${i + 1}): ${stdout}`);
@@ -124,7 +130,14 @@ export class AppService {
           if (stats.size > 100) { // File exists and has content
             console.log(`Successful conversion on attempt ${i + 1}, file size: ${stats.size} bytes`);
             const result = await fs.readFile(tempOutput);
-            return result;
+            
+            // Validate the converted file
+            if (await this.validateConvertedFile(result, format)) {
+              return result;
+            } else {
+              console.log(`File validation failed on attempt ${i + 1}, trying next method`);
+              await fs.unlink(tempOutput).catch(() => {});
+            }
           } else {
             console.log(`File created but too small (${stats.size} bytes), trying next method`);
             // Clean up the small file before next attempt
@@ -142,12 +155,134 @@ export class AppService {
       }
     }
     
-    // If all attempts failed, provide a more helpful error message
-    throw new Error(
-      `PDF to ${format.toUpperCase()} conversion failed after multiple attempts. ` +
-      `This PDF may contain complex formatting, images, or be scanned content that cannot be easily converted to editable format. ` +
-      `Last error: ${lastError}`
-    );
+    // If LibreOffice fails, try alternative methods for certain formats
+    if (format === 'docx') {
+      console.log(`Attempting alternative PDF to text extraction for Word conversion`);
+      try {
+        return await this.convertPdfToWordAlternative(tempInput, tempOutput, tempDir);
+      } catch (altError) {
+        console.error(`Alternative conversion also failed: ${altError.message}`);
+      }
+    }
+    
+    // Provide specific error messages based on PDF characteristics
+    let errorMessage = `PDF to ${format.toUpperCase()} conversion failed after multiple attempts. `;
+    
+    if (pdfInfo.isScanned) {
+      errorMessage += `This appears to be a scanned PDF (image-based). Such PDFs cannot be directly converted to editable formats. `;
+    } else if (pdfInfo.hasComplexLayout) {
+      errorMessage += `This PDF has complex formatting that may not convert well to ${format.toUpperCase()}. `;
+    } else if (pdfInfo.isProtected) {
+      errorMessage += `This PDF appears to be password-protected or have restrictions that prevent conversion. `;
+    } else {
+      errorMessage += `The PDF format may not be compatible with the target format. `;
+    }
+    
+    errorMessage += `Try using a simpler, text-based PDF. Last error: ${lastError}`;
+    
+    throw new Error(errorMessage);
+  }
+
+  private async analyzePdf(pdfPath: string): Promise<{isScanned: boolean, hasComplexLayout: boolean, isProtected: boolean, pageCount: number}> {
+    try {
+      // Use pdfinfo to get basic PDF information
+      const { stdout: pdfInfo } = await this.execAsync(`pdfinfo "${pdfPath}"`, { timeout: 10000 });
+      
+      // Extract text to check if it's text-based or scanned
+      const { stdout: textContent } = await this.execAsync(`pdftotext "${pdfPath}" -`, { timeout: 15000 });
+      
+      const pageCount = parseInt(pdfInfo.match(/Pages:\s*(\d+)/)?.[1] || '0');
+      const isScanned = textContent.trim().length < 100; // Very little text suggests scanned PDF
+      const hasComplexLayout = pdfInfo.includes('Form') || pdfInfo.includes('JavaScript') || textContent.includes('\t\t');
+      const isProtected = pdfInfo.includes('Encrypted') || pdfInfo.includes('no');
+      
+      return {
+        isScanned,
+        hasComplexLayout,
+        isProtected,
+        pageCount
+      };
+    } catch (error) {
+      console.error(`PDF analysis failed: ${error.message}`);
+      return {
+        isScanned: false,
+        hasComplexLayout: true,
+        isProtected: false,
+        pageCount: 1
+      };
+    }
+  }
+
+  private async validateConvertedFile(buffer: Buffer, format: string): Promise<boolean> {
+    try {
+      // Basic validation based on file format
+      const content = buffer.toString('hex').substring(0, 20);
+      
+      switch (format) {
+        case 'docx':
+          // DOCX files start with PK (ZIP signature)
+          return content.startsWith('504b');
+        case 'xlsx':
+          // XLSX files also start with PK (ZIP signature)
+          return content.startsWith('504b');
+        case 'pptx':
+          // PPTX files also start with PK (ZIP signature)
+          return content.startsWith('504b');
+        default:
+          return buffer.length > 500; // Basic size check
+      }
+    } catch (error) {
+      console.error(`File validation error: ${error.message}`);
+      return false;
+    }
+  }
+
+  private async convertPdfToWordAlternative(tempInput: string, tempOutput: string, tempDir: string): Promise<Buffer> {
+    console.log(`Attempting alternative PDF to Word conversion using text extraction`);
+    
+    // Extract text from PDF
+    const { stdout: extractedText } = await this.execAsync(`pdftotext "${tempInput}" -`, { timeout: 30000 });
+    
+    if (extractedText.trim().length < 50) {
+      throw new Error('PDF contains insufficient text for conversion');
+    }
+    
+    // Create a simple Word document with the extracted text
+    const simpleDocxPath = `${tempDir}/${Date.now()}_simple.docx`;
+    
+    // Create a basic DOCX structure (this is a simplified approach)
+    // For a more robust solution, you might want to use a library like docx
+    const simpleText = extractedText.replace(/\n\n+/g, '\n\n').trim();
+    
+    // Write to a temporary text file first
+    const tempTextFile = `${tempDir}/${Date.now()}_temp.txt`;
+    await fs.writeFile(tempTextFile, simpleText);
+    
+    // Convert text to DOCX using LibreOffice
+    const textToDocxCommand = `libreoffice --headless --convert-to docx --outdir ${tempDir} "${tempTextFile}"`;
+    await this.execAsync(textToDocxCommand, { timeout: 30000 });
+    
+    // Find the generated DOCX file
+    const generatedDocx = tempTextFile.replace('.txt', '.docx');
+    
+    try {
+      const result = await fs.readFile(generatedDocx);
+      
+      // Clean up temporary files
+      await fs.unlink(tempTextFile).catch(() => {});
+      await fs.unlink(generatedDocx).catch(() => {});
+      
+      return result;
+    } catch (error) {
+      // Clean up on error
+      await fs.unlink(tempTextFile).catch(() => {});
+      await fs.unlink(generatedDocx).catch(() => {});
+      throw error;
+    }
+  }
+
+  async analyzePdfFile(pdfPath: string): Promise<{isScanned: boolean, hasComplexLayout: boolean, isProtected: boolean, pageCount: number}> {
+    return await this.analyzePdf(pdfPath);
   }
 
   async compressPdf(file: Express.Multer.File, quality: string = 'moderate'): Promise<Buffer> {
