@@ -55,6 +55,30 @@ async function bootstrap() {
       }
     }
     
+    // RAILWAY WORKAROUND: Also listen on port 3000 if Railway assigned a different port
+    // This is needed because Railway's load balancer seems to expect port 3000
+    if (process.env.PORT && process.env.PORT !== '3000') {
+      try {
+        const secondApp = await NestFactory.create(AppModule);
+        
+        // Configure the same middleware for the backup server
+        secondApp.use(cors({
+          origin: '*',
+          methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+          preflightContinue: false,
+          optionsSuccessStatus: 204,
+          credentials: true,
+        }));
+        secondApp.use(json({ limit: '50mb' }));
+        secondApp.use(express.urlencoded({ extended: true, limit: '50mb' }));
+        
+        await secondApp.listen(3000, host);
+        console.log(`🔄 Backup server also listening on port 3000 for Railway compatibility`);
+      } catch (err) {
+        console.log(`ℹ️ Could not start backup server on port 3000: ${err.message}`);
+      }
+    }
+    
     // Additional debugging for Railway
     console.log(`✅ Server listening on http://${host}:${port}`);
     console.log(`✅ Server successfully started on port ${port}`);

@@ -128,13 +128,40 @@ export class AppController {
       if (file.mimetype !== 'application/pdf') {
         return res.status(400).json({ error: 'Uploaded file is not a PDF' });
       }
+
+      // Validate file size (PDFs larger than 50MB may cause issues)
+      if (file.size > 50 * 1024 * 1024) {
+        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
+      }
       
+      console.log(`Converting PDF to Word: ${file.originalname}, size: ${file.size} bytes`);
       const output = await this.appService.convertLibreOffice(file, 'docx');
-      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      
+      res.set({ 
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.docx')}"` 
+      });
       res.send(output);
     } catch (error) {
       console.error('PDF to Word conversion error:', error.message);
-      res.status(500).json({ error: 'Failed to convert PDF to Word', message: error.message });
+      
+      // Provide more specific error messages
+      if (error.message.includes('timeout')) {
+        return res.status(408).json({ 
+          error: 'Conversion timeout', 
+          message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
+        });
+      } else if (error.message.includes('complex formatting')) {
+        return res.status(422).json({ 
+          error: 'Complex PDF format', 
+          message: 'This PDF contains complex formatting that cannot be converted. Try using a text-based PDF instead of a scanned document.' 
+        });
+      } else {
+        return res.status(500).json({ 
+          error: 'Failed to convert PDF to Word', 
+          message: error.message 
+        });
+      }
     }
   }
 
@@ -154,13 +181,39 @@ export class AppController {
       if (file.mimetype !== 'application/pdf') {
         return res.status(400).json({ error: 'Uploaded file is not a PDF' });
       }
+
+      // Validate file size
+      if (file.size > 50 * 1024 * 1024) {
+        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
+      }
       
+      console.log(`Converting PDF to Excel: ${file.originalname}, size: ${file.size} bytes`);
       const output = await this.appService.convertLibreOffice(file, 'xlsx');
-      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      res.set({ 
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.xlsx')}"` 
+      });
       res.send(output);
     } catch (error) {
       console.error('PDF to Excel conversion error:', error.message);
-      res.status(500).json({ error: 'Failed to convert PDF to Excel', message: error.message });
+      
+      if (error.message.includes('timeout')) {
+        return res.status(408).json({ 
+          error: 'Conversion timeout', 
+          message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
+        });
+      } else if (error.message.includes('complex formatting')) {
+        return res.status(422).json({ 
+          error: 'Complex PDF format', 
+          message: 'This PDF may not contain tabular data suitable for Excel conversion.' 
+        });
+      } else {
+        return res.status(500).json({ 
+          error: 'Failed to convert PDF to Excel', 
+          message: error.message 
+        });
+      }
     }
   }
 
@@ -180,13 +233,39 @@ export class AppController {
       if (file.mimetype !== 'application/pdf') {
         return res.status(400).json({ error: 'Uploaded file is not a PDF' });
       }
+
+      // Validate file size
+      if (file.size > 50 * 1024 * 1024) {
+        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
+      }
       
+      console.log(`Converting PDF to PowerPoint: ${file.originalname}, size: ${file.size} bytes`);
       const output = await this.appService.convertLibreOffice(file, 'pptx');
-      res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+      
+      res.set({ 
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.pptx')}"` 
+      });
       res.send(output);
     } catch (error) {
       console.error('PDF to PowerPoint conversion error:', error.message);
-      res.status(500).json({ error: 'Failed to convert PDF to PowerPoint', message: error.message });
+      
+      if (error.message.includes('timeout')) {
+        return res.status(408).json({ 
+          error: 'Conversion timeout', 
+          message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
+        });
+      } else if (error.message.includes('complex formatting')) {
+        return res.status(422).json({ 
+          error: 'Complex PDF format', 
+          message: 'This PDF contains complex formatting that may not convert well to PowerPoint slides.' 
+        });
+      } else {
+        return res.status(500).json({ 
+          error: 'Failed to convert PDF to PowerPoint', 
+          message: error.message 
+        });
+      }
     }
   }
 
