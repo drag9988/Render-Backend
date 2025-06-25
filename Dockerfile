@@ -34,6 +34,12 @@ RUN npm run build
 # List the build output for debugging
 RUN ls -la dist/
 
+# Verify the build doesn't contain hardcoded port 3000
+RUN grep -n "3000" dist/main.js || echo "✅ No hardcoded port 3000 found in build"
+
+# Railway workaround: Expose port 3000 since Railway seems to expect it
+EXPOSE 3000
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV TEMP_DIR=/tmp/pdf-converter
