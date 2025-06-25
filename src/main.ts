@@ -26,14 +26,42 @@ async function bootstrap() {
     
     // Use PORT from environment variables (for Railway) or default to 3000
     const port = process.env.PORT || 3000;
+    const host = '0.0.0.0'; // Explicitly bind to all interfaces
     
     // Listen on all interfaces (0.0.0.0) for better Railway compatibility
-    await app.listen(port, '0.0.0.0');
+    await app.listen(port, host);
     
-    // Log the actual port being used
-    const serverUrl = await app.getUrl();
-    console.log(`✅ Server listening on ${serverUrl}`);
+    // Additional debugging for Railway
+    console.log(`✅ Server listening on http://${host}:${port}`);
     console.log(`✅ Server successfully started on port ${port}`);
+    console.log(`🔍 Attempting to verify server is accessible...`);
+    
+    // Test if server is accessible locally
+    try {
+      const http = require('http');
+      const testReq = http.request({
+        hostname: host === '0.0.0.0' ? '127.0.0.1' : host,
+        port: port,
+        path: '/health',
+        method: 'GET',
+        timeout: 5000
+      }, (res) => {
+        console.log(`✅ Local health check successful: ${res.statusCode}`);
+      });
+      
+      testReq.on('error', (err) => {
+        console.error(`❌ Local health check failed: ${err.message}`);
+      });
+      
+      testReq.on('timeout', () => {
+        console.error(`❌ Local health check timed out`);
+      });
+      
+      testReq.end();
+    } catch (err) {
+      console.error(`❌ Failed to perform local health check: ${err.message}`);
+    }
+    
     console.log(`Environment PORT: ${process.env.PORT}, Using port: ${port}`);
     console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode`);
     
@@ -53,6 +81,8 @@ async function bootstrap() {
     console.log('Environment variables:');
     console.log(`  NODE_ENV: ${process.env.NODE_ENV || 'not set'}`);
     console.log(`  PORT: ${process.env.PORT || 'not set'}`);
+    console.log(`  RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'not set'}`);
+    console.log(`  RAILWAY_SERVICE_NAME: ${process.env.RAILWAY_SERVICE_NAME || 'not set'}`);
     console.log(`  TEMP_DIR: ${process.env.TEMP_DIR || 'not set'}`);
     console.log(`  Hostname: ${os.hostname()}`);
     console.log(`  Platform: ${os.platform()}`);
@@ -61,6 +91,11 @@ async function bootstrap() {
     console.log(`  Free memory: ${Math.round(os.freemem() / (1024 * 1024))} MB`);
     
     console.log('🚀 PDF Converter API started successfully!');
+    
+    // Keep the process alive and log status every 30 seconds
+    setInterval(() => {
+      console.log(`📊 Server still running on ${host}:${port} - Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+    }, 30000);
     
     // Graceful shutdown handling
     process.on('SIGTERM', async () => {
@@ -73,6 +108,17 @@ async function bootstrap() {
       console.log('SIGINT received, shutting down gracefully...');
       await app.close();
       process.exit(0);
+    });
+
+    // Additional error handling
+    process.on('uncaughtException', (error) => {
+      console.error('❌ Uncaught Exception:', error);
+      process.exit(1);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+      process.exit(1);
     });
     
   } catch (error) {

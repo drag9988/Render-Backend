@@ -34,10 +34,6 @@ RUN npm run build
 # List the build output for debugging
 RUN ls -la dist/
 
-# Expose backend port (Railway will set the PORT env variable)
-EXPOSE $PORT
-EXPOSE 3000
-
 # Set environment variables
 ENV NODE_ENV=production
 ENV TEMP_DIR=/tmp/pdf-converter
