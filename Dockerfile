@@ -31,9 +31,12 @@ RUN chmod +x node_modules/.bin/nest
 # Build the NestJS project using the script from package.json
 RUN npm run build
 
+# List the build output for debugging
+RUN ls -la dist/
+
 # Expose backend port (Railway will set the PORT env variable)
+EXPOSE $PORT
 EXPOSE 3000
-EXPOSE 8080
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -44,7 +47,7 @@ RUN mkdir -p /tmp/pdf-converter && chmod 777 /tmp/pdf-converter
 
 # Add healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
+  CMD curl -f http://0.0.0.0:${PORT:-3000}/health || exit 1
 
-# Set command to run the application
-CMD ["/bin/bash", "/app/start.sh"]
+# Set command to run the application directly
+CMD ["npm", "start"]
