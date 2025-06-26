@@ -1,5 +1,6 @@
 import { Controller, Post, Get, UploadedFile, UseInterceptors, Res, Body, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AppService } from './app.service';
 import * as multer from 'multer';
@@ -11,6 +12,7 @@ export class AppController {
 
   // Health check endpoint
   @Get()
+  @SkipThrottle() // No rate limiting for health checks
   healthCheck(@Res() res: Response) {
     try {
       const healthInfo = {
@@ -45,12 +47,14 @@ export class AppController {
   
   // Specific health check endpoint
   @Get('health')
+  @SkipThrottle() // No rate limiting for health checks
   health(@Res() res: Response) {
     return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   }
 
   // Word to PDF conversion
   @Post('convert-word-to-pdf')
+  @Throttle({ default: { limit: 20, ttl: 86400000 } }) // 20 requests per day for office to PDF
   @UseInterceptors(FileInterceptor('file'))
   async convertWordToPdf(
     @UploadedFile() file: Express.Multer.File,
@@ -72,6 +76,7 @@ export class AppController {
 
   // Excel to PDF conversion
   @Post('convert-excel-to-pdf')
+  @Throttle({ default: { limit: 20, ttl: 86400000 } }) // 20 requests per day for office to PDF
   @UseInterceptors(FileInterceptor('file'))
   async convertExcelToPdf(
     @UploadedFile() file: Express.Multer.File,
@@ -93,6 +98,7 @@ export class AppController {
 
   // PowerPoint to PDF conversion
   @Post('convert-ppt-to-pdf')
+  @Throttle({ default: { limit: 20, ttl: 86400000 } }) // 20 requests per day for office to PDF
   @UseInterceptors(FileInterceptor('file'))
   async convertPptToPdf(
     @UploadedFile() file: Express.Multer.File,
@@ -114,6 +120,7 @@ export class AppController {
 
   // PDF to Word conversion
   @Post('convert-pdf-to-word')
+  @Throttle({ default: { limit: 5, ttl: 86400000 } }) // 5 requests per day
   @UseInterceptors(FileInterceptor('file'))
   async convertPdfToWord(
     @UploadedFile() file: Express.Multer.File,
@@ -192,6 +199,7 @@ export class AppController {
 
   // PDF to Excel conversion
   @Post('convert-pdf-to-excel')
+  @Throttle({ default: { limit: 5, ttl: 86400000 } }) // 5 requests per day
   @UseInterceptors(FileInterceptor('file'))
   async convertPdfToExcel(
     @UploadedFile() file: Express.Multer.File,
@@ -259,6 +267,7 @@ export class AppController {
 
   // PDF to PowerPoint conversion
   @Post('convert-pdf-to-ppt')
+  @Throttle({ default: { limit: 5, ttl: 86400000 } }) // 5 requests per day
   @UseInterceptors(FileInterceptor('file'))
   async convertPdfToPpt(
     @UploadedFile() file: Express.Multer.File,
@@ -326,6 +335,7 @@ export class AppController {
 
   // PDF analysis endpoint - check if PDF is suitable for conversion
   @Post('analyze-pdf')
+  @Throttle({ default: { limit: 10, ttl: 86400000 } }) // 10 requests per day for analysis
   @UseInterceptors(FileInterceptor('file'))
   async analyzePdf(
     @UploadedFile() file: Express.Multer.File,
@@ -407,6 +417,7 @@ export class AppController {
 
   // PDF compression with quality options
   @Post('compress-pdf')
+  @Throttle({ default: { limit: 15, ttl: 86400000 } }) // 15 requests per day for compression
   @UseInterceptors(FileInterceptor('file'))
   async compressPdf(
     @UploadedFile() file: Express.Multer.File,
@@ -434,6 +445,7 @@ export class AppController {
 
   // ConvertAPI status endpoint
   @Get('convertapi/status')
+  @SkipThrottle() // No rate limiting for status checks
   async getConvertApiStatus(@Res() res: Response) {
     try {
       const status = await this.appService.getConvertApiStatus();

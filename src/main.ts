@@ -18,6 +18,8 @@ async function bootstrap() {
       preflightContinue: false,
       optionsSuccessStatus: 204,
       credentials: true,
+      // Allow rate limiting headers to be visible to frontend
+      exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
     }));
     
     // Increase payload size limit for file uploads
