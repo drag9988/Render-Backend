@@ -431,4 +431,22 @@ export class AppController {
       res.status(500).json({ error: 'Failed to compress PDF', message: error.message });
     }
   }
+
+  // ConvertAPI status endpoint
+  @Get('convertapi/status')
+  async getConvertApiStatus(@Res() res: Response) {
+    try {
+      const status = await this.appService.getConvertApiStatus();
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        convertapi: status
+      });
+    } catch (error) {
+      console.error('ConvertAPI status check error:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to check ConvertAPI status', 
+        message: error.message 
+      });
+    }
+  }
 }
