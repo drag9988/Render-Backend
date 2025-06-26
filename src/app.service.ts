@@ -93,18 +93,42 @@ export class AppService {
       }
       
       // Standard LibreOffice conversion for other formats
-      const command = `libreoffice --headless --convert-to ${format} --outdir ${tempDir} ${tempInput}`;
+      let command = `libreoffice --headless --convert-to ${format} --outdir "${tempDir}" "${tempInput}"`;
       this.logger.log(`Executing command: ${command}`);
       
-      // Increase timeout for potentially long-running conversions
-      const { stdout, stderr } = await this.execAsync(command, { timeout: 60000 });
-      
-      if (stdout) {
-        this.logger.log(`LibreOffice conversion output: ${stdout}`);
-      }
-      
-      if (stderr) {
-        this.logger.error(`LibreOffice conversion error: ${stderr}`);
+      try {
+        // Increase timeout for potentially long-running conversions
+        const { stdout, stderr } = await this.execAsync(command, { timeout: 60000 });
+        
+        if (stdout) {
+          this.logger.log(`LibreOffice conversion output: ${stdout}`);
+        }
+        
+        if (stderr) {
+          this.logger.error(`LibreOffice conversion error: ${stderr}`);
+          // Don't throw immediately on stderr - LibreOffice often outputs warnings
+        }
+      } catch (execError) {
+        this.logger.error(`LibreOffice command failed: ${execError.message}`);
+        
+        // Try alternative command with soffice
+        try {
+          command = `soffice --headless --convert-to ${format} --outdir "${tempDir}" "${tempInput}"`;
+          this.logger.log(`Trying alternative command: ${command}`);
+          
+          const { stdout: altStdout, stderr: altStderr } = await this.execAsync(command, { timeout: 60000 });
+          
+          if (altStdout) {
+            this.logger.log(`Alternative LibreOffice output: ${altStdout}`);
+          }
+          
+          if (altStderr) {
+            this.logger.error(`Alternative LibreOffice error: ${altStderr}`);
+          }
+        } catch (altError) {
+          this.logger.error(`Alternative LibreOffice command also failed: ${altError.message}`);
+          throw new Error(`LibreOffice is not available or not properly configured. Both 'libreoffice' and 'soffice' commands failed.`);
+        }
       }
 
       // Check if output file exists
@@ -378,17 +402,41 @@ export class AppService {
       this.logger.log(`PDF written to ${input}`);
 
       // Execute Ghostscript for PDF compression
-      const command = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile=${output} ${input}`;
+      let command = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"`;
       this.logger.log(`Executing command: ${command}`);
       
-      const { stdout, stderr } = await this.execAsync(command);
-      
-      if (stdout) {
-        this.logger.log(`Ghostscript output: ${stdout}`);
-      }
-      
-      if (stderr) {
-        this.logger.error(`Ghostscript compression error: ${stderr}`);
+      try {
+        const { stdout, stderr } = await this.execAsync(command, { timeout: 120000 }); // 2 minute timeout
+        
+        if (stdout) {
+          this.logger.log(`Ghostscript output: ${stdout}`);
+        }
+        
+        if (stderr) {
+          this.logger.error(`Ghostscript compression error: ${stderr}`);
+          // Don't throw immediately on stderr - check if file was created
+        }
+      } catch (execError) {
+        this.logger.error(`Ghostscript command failed: ${execError.message}`);
+        
+        // Try alternative ghostscript command
+        try {
+          command = `ghostscript -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"`;
+          this.logger.log(`Trying alternative ghostscript command: ${command}`);
+          
+          const { stdout: altStdout, stderr: altStderr } = await this.execAsync(command, { timeout: 120000 });
+          
+          if (altStdout) {
+            this.logger.log(`Alternative Ghostscript output: ${altStdout}`);
+          }
+          
+          if (altStderr) {
+            this.logger.error(`Alternative Ghostscript error: ${altStderr}`);
+          }
+        } catch (altError) {
+          this.logger.error(`Alternative Ghostscript command also failed: ${altError.message}`);
+          throw new Error(`Ghostscript is not available or not properly configured. PDF compression failed.`);
+        }
       }
 
       // Check if output file exists

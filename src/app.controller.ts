@@ -4,6 +4,7 @@ import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Response, Request } from 'express';
 import { AppService } from './app.service';
 import { SecurityService } from './security.service';
+import { DiagnosticService } from './diagnostic.service';
 import * as multer from 'multer';
 import * as os from 'os';
 
@@ -13,7 +14,8 @@ export class AppController {
 
   constructor(
     private readonly appService: AppService,
-    private readonly securityService: SecurityService
+    private readonly securityService: SecurityService,
+    private readonly diagnosticService: DiagnosticService
   ) {}
 
   // Health check endpoint
@@ -598,6 +600,45 @@ export class AppController {
       console.error('ConvertAPI status check error:', error.message);
       return res.status(500).json({ 
         error: 'Failed to check ConvertAPI status', 
+        message: error.message 
+      });
+    }
+  }
+
+  // System diagnostics endpoint
+  @Get('diagnostics/system')
+  @SkipThrottle() // No rate limiting for diagnostics
+  async getSystemDiagnostics(@Res() res: Response) {
+    try {
+      const diagnostics = await this.diagnosticService.checkSystemRequirements();
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        diagnostics
+      });
+    } catch (error) {
+      this.logger.error('System diagnostics error:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to check system diagnostics', 
+        message: error.message 
+      });
+    }
+  }
+
+  // LibreOffice test endpoint
+  @Get('diagnostics/libreoffice-test')
+  @SkipThrottle() // No rate limiting for diagnostics
+  async testLibreOffice(@Res() res: Response) {
+    try {
+      const testResult = await this.diagnosticService.testLibreOfficeConversion();
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        libreoffice_test: testResult,
+        message: testResult ? 'LibreOffice is working properly' : 'LibreOffice test failed'
+      });
+    } catch (error) {
+      this.logger.error('LibreOffice test error:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to test LibreOffice', 
         message: error.message 
       });
     }

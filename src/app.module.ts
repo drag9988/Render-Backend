@@ -5,6 +5,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConvertApiService } from './convertapi.service';
 import { SecurityService } from './security.service';
+import { DiagnosticService } from './diagnostic.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { SecurityService } from './security.service';
     AppService,
     ConvertApiService,
     SecurityService,
+    DiagnosticService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
