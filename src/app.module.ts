@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConvertApiService } from './convertapi.service';
+import { FileValidationService } from './file-validation.service';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { ConvertApiService } from './convertapi.service';
   providers: [
     AppService,
     ConvertApiService,
+    FileValidationService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

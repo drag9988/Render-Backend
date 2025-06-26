@@ -1,21 +1,49 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as multer from 'multer';
 import { ConvertApiService } from './convertapi.service';
+import { FileValidationService } from './file-validation.service';
 
 @Injectable()
 export class AppService {
   private readonly logger = new Logger(AppService.name);
   private readonly execAsync = promisify(exec);
 
-  constructor(private readonly convertApiService: ConvertApiService) {}
+  constructor(
+    private readonly convertApiService: ConvertApiService,
+    private readonly fileValidationService: FileValidationService
+  ) {}
 
   async convertLibreOffice(file: Express.Multer.File, format: string): Promise<Buffer> {
     if (!file || !file.buffer) {
       throw new Error('Invalid file provided');
     }
+
+    // Validate file based on its type and target format
+    let expectedFileType: 'pdf' | 'word' | 'excel' | 'powerpoint';
+    
+    if (file.mimetype === 'application/pdf') {
+      expectedFileType = 'pdf';
+    } else if (this.fileValidationService['allowedMimeTypes']['word'].includes(file.mimetype)) {
+      expectedFileType = 'word';
+    } else if (this.fileValidationService['allowedMimeTypes']['excel'].includes(file.mimetype)) {
+      expectedFileType = 'excel';
+    } else if (this.fileValidationService['allowedMimeTypes']['powerpoint'].includes(file.mimetype)) {
+      expectedFileType = 'powerpoint';
+    } else {
+      throw new BadRequestException(`Unsupported file type: ${file.mimetype}`);
+    }
+
+    // Validate the file
+    const validation = this.fileValidationService.validateFile(file, expectedFileType);
+    if (!validation.isValid) {
+      throw new BadRequestException(`File validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Update the file with sanitized filename
+    file.originalname = validation.sanitizedFilename;
 
     // For PDF to Office formats, try ConvertAPI first, then fallback to LibreOffice
     if (file.mimetype === 'application/pdf' && ['docx', 'xlsx', 'pptx'].includes(format)) {
@@ -342,6 +370,15 @@ export class AppService {
       throw new Error('Invalid PDF file provided');
     }
 
+    // Validate PDF file
+    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    if (!validation.isValid) {
+      throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Validate and sanitize quality parameter
+    const sanitizedQuality = this.fileValidationService.validateCompressionQuality(quality);
+
     // Create a unique filename with timestamp
     const timestamp = Date.now();
     
@@ -362,9 +399,9 @@ export class AppService {
       'high': '/printer'
     };
     
-    // Default to moderate if invalid quality is provided
-    const pdfSetting = qualitySettings[quality] || '/ebook';
-    this.logger.log(`PDF compression quality: ${quality}, using setting: ${pdfSetting}`);
+    // Use sanitized quality
+    const pdfSetting = qualitySettings[sanitizedQuality] || '/ebook';
+    this.logger.log(`PDF compression quality: ${sanitizedQuality}, using setting: ${pdfSetting}`);
 
     try {
       this.logger.log(`Starting PDF compression, input size: ${file.buffer.length} bytes`);
@@ -373,11 +410,11 @@ export class AppService {
       await fs.writeFile(input, file.buffer);
       this.logger.log(`PDF written to ${input}`);
 
-      // Execute Ghostscript for PDF compression
-      const command = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile=${output} ${input}`;
+      // Execute Ghostscript for PDF compression with input validation
+      const command = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"`;
       this.logger.log(`Executing command: ${command}`);
       
-      const { stdout, stderr } = await this.execAsync(command);
+      const { stdout, stderr } = await this.execAsync(command, { timeout: 120000 }); // 2 minute timeout
       
       if (stdout) {
         this.logger.log(`Ghostscript output: ${stdout}`);
@@ -399,6 +436,11 @@ export class AppService {
       this.logger.log(`Reading compressed PDF from ${output}`);
       const result = await fs.readFile(output);
       this.logger.log(`Successfully compressed PDF, original size: ${file.buffer.length} bytes, compressed size: ${result.length} bytes`);
+      
+      // Validate compressed file is not corrupted
+      if (result.length < 100) {
+        throw new Error('Compressed PDF appears to be corrupted');
+      }
       
       // If the compressed file is larger than the original, return the original
       if (result.length > file.buffer.length) {

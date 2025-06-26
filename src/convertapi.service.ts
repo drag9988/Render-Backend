@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import axios from 'axios';
 import * as FormData from 'form-data';
+import { FileValidationService } from './file-validation.service';
 
 export interface ConvertApiConfig {
   secret: string;
@@ -15,7 +16,7 @@ export class ConvertApiService {
   private readonly baseUrl: string;
   private readonly timeout: number;
 
-  constructor() {
+  constructor(private readonly fileValidationService: FileValidationService) {
     this.secret = process.env.CONVERTAPI_SECRET;
     this.baseUrl = process.env.CONVERTAPI_BASE_URL || 'https://v2.convertapi.com';
     this.timeout = parseInt(process.env.CONVERTAPI_TIMEOUT || '60000', 10);
@@ -30,48 +31,119 @@ export class ConvertApiService {
   }
 
   /**
-   * Convert PDF to DOCX using ConvertAPI
+   * Convert PDF to DOCX using ConvertAPI with validation
    */
   async convertPdfToDocx(pdfBuffer: Buffer, filename: string): Promise<Buffer> {
-    return this.convertPdf(pdfBuffer, filename, 'docx');
+    const file: Express.Multer.File = {
+      fieldname: 'file',
+      originalname: filename,
+      encoding: '7bit',
+      mimetype: 'application/pdf',
+      buffer: pdfBuffer,
+      size: pdfBuffer.length,
+      stream: null,
+      destination: '',
+      filename: '',
+      path: ''
+    };
+
+    // Validate file
+    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    if (!validation.isValid) {
+      throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    return this.convertPdf(pdfBuffer, validation.sanitizedFilename, 'docx');
   }
 
   /**
-   * Convert PDF to XLSX using ConvertAPI
+   * Convert PDF to XLSX using ConvertAPI with validation
    */
   async convertPdfToXlsx(pdfBuffer: Buffer, filename: string): Promise<Buffer> {
-    return this.convertPdf(pdfBuffer, filename, 'xlsx');
+    const file: Express.Multer.File = {
+      fieldname: 'file',
+      originalname: filename,
+      encoding: '7bit',
+      mimetype: 'application/pdf',
+      buffer: pdfBuffer,
+      size: pdfBuffer.length,
+      stream: null,
+      destination: '',
+      filename: '',
+      path: ''
+    };
+
+    // Validate file
+    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    if (!validation.isValid) {
+      throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    return this.convertPdf(pdfBuffer, validation.sanitizedFilename, 'xlsx');
   }
 
   /**
-   * Convert PDF to PPTX using ConvertAPI
+   * Convert PDF to PPTX using ConvertAPI with validation
    */
   async convertPdfToPptx(pdfBuffer: Buffer, filename: string): Promise<Buffer> {
-    return this.convertPdf(pdfBuffer, filename, 'pptx');
+    const file: Express.Multer.File = {
+      fieldname: 'file',
+      originalname: filename,
+      encoding: '7bit',
+      mimetype: 'application/pdf',
+      buffer: pdfBuffer,
+      size: pdfBuffer.length,
+      stream: null,
+      destination: '',
+      filename: '',
+      path: ''
+    };
+
+    // Validate file
+    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    if (!validation.isValid) {
+      throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    return this.convertPdf(pdfBuffer, validation.sanitizedFilename, 'pptx');
   }
 
   /**
-   * Generic PDF conversion method
+   * Generic PDF conversion method with enhanced security
    */
   private async convertPdf(pdfBuffer: Buffer, filename: string, targetFormat: string): Promise<Buffer> {
     if (!this.isAvailable()) {
       throw new Error('ConvertAPI is not available. Please set CONVERTAPI_SECRET environment variable.');
     }
 
+    // Additional buffer validation
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      throw new BadRequestException('Invalid or empty PDF buffer provided');
+    }
+
+    // Check for maximum file size (additional safety check)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (pdfBuffer.length > maxSize) {
+      throw new BadRequestException(`File size ${pdfBuffer.length} bytes exceeds maximum allowed size of ${maxSize} bytes`);
+    }
+
     try {
       this.logger.log(`Starting PDF to ${targetFormat.toUpperCase()} conversion using ConvertAPI for file: ${filename}`);
 
-      // Create form data
+      // Sanitize filename for API
+      const sanitizedFilename = this.sanitizeFilenameForApi(filename);
+
+      // Create form data with validation
       const formData = new FormData();
       formData.append('File', pdfBuffer, {
-        filename: filename,
+        filename: sanitizedFilename,
         contentType: 'application/pdf'
       });
 
-      // Set conversion parameters
+      // Set conversion parameters with input validation
       formData.append('StoreFile', 'true');
       
-      // Format-specific parameters
+      // Format-specific parameters with validation
       if (targetFormat === 'docx') {
         formData.append('DocxVersion', '2019');
         formData.append('PageRange', '1-');
@@ -80,9 +152,11 @@ export class ConvertApiService {
         formData.append('PageRange', '1-');
       } else if (targetFormat === 'pptx') {
         formData.append('PageRange', '1-');
+      } else {
+        throw new BadRequestException(`Unsupported target format: ${targetFormat}`);
       }
 
-      // Make API request
+      // Make API request with enhanced error handling
       const response = await axios.post(
         `${this.baseUrl}/convert/pdf/to/${targetFormat}`,
         formData,
@@ -94,29 +168,51 @@ export class ConvertApiService {
             ...formData.getHeaders(),
           },
           timeout: this.timeout,
-          responseType: 'json'
+          responseType: 'json',
+          maxContentLength: 100 * 1024 * 1024, // 100MB max response
+          maxBodyLength: 60 * 1024 * 1024, // 60MB max request body
         }
       );
 
-      // Check if conversion was successful
-      if (!response.data || !response.data.Files || response.data.Files.length === 0) {
+      // Enhanced response validation
+      if (!response.data) {
+        throw new Error('ConvertAPI returned empty response');
+      }
+
+      if (!response.data.Files || !Array.isArray(response.data.Files) || response.data.Files.length === 0) {
         throw new Error('ConvertAPI returned no files');
       }
 
-      const fileUrl = response.data.Files[0].Url;
-      if (!fileUrl) {
+      const fileInfo = response.data.Files[0];
+      if (!fileInfo.Url) {
         throw new Error('ConvertAPI returned no file URL');
       }
 
-      this.logger.log(`ConvertAPI conversion successful. Downloading file from: ${fileUrl}`);
+      // Validate file URL
+      if (!this.isValidUrl(fileInfo.Url)) {
+        throw new Error('ConvertAPI returned invalid file URL');
+      }
 
-      // Download the converted file
-      const fileResponse = await axios.get(fileUrl, {
+      this.logger.log(`ConvertAPI conversion successful. Downloading file from: ${fileInfo.Url}`);
+
+      // Download the converted file with validation
+      const fileResponse = await axios.get(fileInfo.Url, {
         responseType: 'arraybuffer',
-        timeout: this.timeout
+        timeout: this.timeout,
+        maxContentLength: 100 * 1024 * 1024, // 100MB max download
       });
 
       const convertedBuffer = Buffer.from(fileResponse.data);
+      
+      // Validate converted file size
+      if (convertedBuffer.length === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      if (convertedBuffer.length > 100 * 1024 * 1024) { // 100MB max
+        throw new Error('Downloaded file size exceeds maximum limit');
+      }
+
       this.logger.log(`Successfully converted PDF to ${targetFormat.toUpperCase()} using ConvertAPI. Output size: ${convertedBuffer.length} bytes`);
 
       return convertedBuffer;
@@ -172,6 +268,34 @@ export class ConvertApiService {
       return balance >= 0; // Even 0 balance means API is accessible
     } catch (error) {
       this.logger.error(`ConvertAPI health check failed: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Sanitize filename for API usage
+   */
+  private sanitizeFilenameForApi(filename: string): string {
+    if (!filename) {
+      return 'document.pdf';
+    }
+
+    // Keep only alphanumeric, dots, dashes, and underscores
+    const sanitized = filename
+      .replace(/[^a-zA-Z0-9.\-_]/g, '_')
+      .substring(0, 100); // Limit length for API
+
+    return sanitized || 'document.pdf';
+  }
+
+  /**
+   * Validate URL format
+   */
+  private isValidUrl(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.protocol === 'https:' && urlObj.hostname.includes('convertapi.com');
+    } catch {
       return false;
     }
   }

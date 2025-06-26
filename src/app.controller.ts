@@ -1,14 +1,18 @@
-import { Controller, Post, Get, UploadedFile, UseInterceptors, Res, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, UploadedFile, UseInterceptors, Res, Body, Query, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { AppService } from './app.service';
+import { FileValidationService } from './file-validation.service';
 import * as multer from 'multer';
 import * as os from 'os';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    private readonly fileValidationService: FileValidationService
+  ) {}
 
   // Health check endpoint
   @Get()
@@ -64,12 +68,27 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+
+      // Validate Word file
+      const validation = this.fileValidationService.validateFile(file, 'word');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'File validation failed', 
+          details: validation.errors 
+        });
+      }
+
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       const output = await this.appService.convertLibreOffice(file, 'pdf');
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
       console.error('Word to PDF conversion error:', error.message);
+      if (error instanceof BadRequestException) {
+        return res.status(400).json({ error: 'Invalid file', message: error.message });
+      }
       res.status(500).json({ error: 'Failed to convert Word to PDF', message: error.message });
     }
   }
@@ -86,12 +105,27 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+
+      // Validate Excel file
+      const validation = this.fileValidationService.validateFile(file, 'excel');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'File validation failed', 
+          details: validation.errors 
+        });
+      }
+
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       const output = await this.appService.convertLibreOffice(file, 'pdf');
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
       console.error('Excel to PDF conversion error:', error.message);
+      if (error instanceof BadRequestException) {
+        return res.status(400).json({ error: 'Invalid file', message: error.message });
+      }
       res.status(500).json({ error: 'Failed to convert Excel to PDF', message: error.message });
     }
   }
@@ -108,12 +142,27 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+
+      // Validate PowerPoint file
+      const validation = this.fileValidationService.validateFile(file, 'powerpoint');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'File validation failed', 
+          details: validation.errors 
+        });
+      }
+
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       const output = await this.appService.convertLibreOffice(file, 'pdf');
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
       console.error('PowerPoint to PDF conversion error:', error.message);
+      if (error instanceof BadRequestException) {
+        return res.status(400).json({ error: 'Invalid file', message: error.message });
+      }
       res.status(500).json({ error: 'Failed to convert PowerPoint to PDF', message: error.message });
     }
   }
@@ -130,16 +179,18 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
-      // Validate file type
-      if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+
+      // Validate PDF file
+      const validation = this.fileValidationService.validateFile(file, 'pdf');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'PDF validation failed', 
+          details: validation.errors 
+        });
       }
 
-      // Validate file size (PDFs larger than 50MB may cause issues)
-      if (file.size > 50 * 1024 * 1024) {
-        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
-      }
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       console.log(`Converting PDF to Word: ${file.originalname}, size: ${file.size} bytes`);
       const output = await this.appService.convertLibreOffice(file, 'docx');
@@ -209,16 +260,18 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
-      // Validate file type
-      if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+
+      // Validate PDF file
+      const validation = this.fileValidationService.validateFile(file, 'pdf');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'PDF validation failed', 
+          details: validation.errors 
+        });
       }
 
-      // Validate file size
-      if (file.size > 50 * 1024 * 1024) {
-        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
-      }
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       console.log(`Converting PDF to Excel: ${file.originalname}, size: ${file.size} bytes`);
       const output = await this.appService.convertLibreOffice(file, 'xlsx');
@@ -277,16 +330,18 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
-      
-      // Validate file type
-      if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+
+      // Validate PDF file
+      const validation = this.fileValidationService.validateFile(file, 'pdf');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'PDF validation failed', 
+          details: validation.errors 
+        });
       }
 
-      // Validate file size
-      if (file.size > 50 * 1024 * 1024) {
-        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
-      }
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       console.log(`Converting PDF to PowerPoint: ${file.originalname}, size: ${file.size} bytes`);
       const output = await this.appService.convertLibreOffice(file, 'pptx');
@@ -428,17 +483,27 @@ export class AppController {
       if (!file) {
         return res.status(400).json({ error: 'No PDF file uploaded' });
       }
-      
-      // Validate file type
-      if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+
+      // Validate PDF file
+      const validation = this.fileValidationService.validateFile(file, 'pdf');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'PDF validation failed', 
+          details: validation.errors 
+        });
       }
+
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
       
       const output = await this.appService.compressPdf(file, quality);
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
       console.error('PDF compression error:', error.message);
+      if (error instanceof BadRequestException) {
+        return res.status(400).json({ error: 'Invalid file', message: error.message });
+      }
       res.status(500).json({ error: 'Failed to compress PDF', message: error.message });
     }
   }
