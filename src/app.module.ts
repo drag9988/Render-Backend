@@ -4,8 +4,6 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConvertApiService } from './convertapi.service';
-import { SecurityService } from './security.service';
-import { DiagnosticService } from './diagnostic.service';
 
 @Module({
   imports: [
@@ -31,8 +29,6 @@ import { DiagnosticService } from './diagnostic.service';
   providers: [
     AppService,
     ConvertApiService,
-    SecurityService,
-    DiagnosticService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
