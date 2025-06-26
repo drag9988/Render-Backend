@@ -4,13 +4,17 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as multer from 'multer';
 import { ConvertApiService } from './convertapi.service';
+import { SecurityService } from './security.service';
 
 @Injectable()
 export class AppService {
   private readonly logger = new Logger(AppService.name);
   private readonly execAsync = promisify(exec);
 
-  constructor(private readonly convertApiService: ConvertApiService) {}
+  constructor(
+    private readonly convertApiService: ConvertApiService,
+    private readonly securityService: SecurityService
+  ) {}
 
   async convertLibreOffice(file: Express.Multer.File, format: string): Promise<Buffer> {
     if (!file || !file.buffer) {
@@ -65,15 +69,15 @@ export class AppService {
   }
 
   private async executeLibreOfficeConversion(file: Express.Multer.File, format: string): Promise<Buffer> {
-    // Create a unique filename with timestamp
+    // Create a secure temporary filename
     const timestamp = Date.now();
-    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_');
+    const secureFilename = this.securityService.generateSecureFilename(file.originalname, 'conversion');
     
     // Use the OS temp directory or fallback to /tmp
     const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
     this.logger.log(`Using temp directory: ${tempDir}`);
     
-    const tempInput = `${tempDir}/${timestamp}_${sanitizedFilename}`;
+    const tempInput = `${tempDir}/${secureFilename}`;
     const tempOutput = tempInput.replace(/\.[^.]+$/, `.${format}`);
 
     try {

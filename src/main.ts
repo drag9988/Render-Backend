@@ -22,6 +22,21 @@ async function bootstrap() {
       exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
     }));
     
+    // Add security headers middleware
+    app.use((req, res, next) => {
+      // Security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('X-Powered-By', 'PDF Converter API');
+      
+      // Content Security Policy for API responses
+      res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'none'; object-src 'none';");
+      
+      next();
+    });
+    
     // Increase payload size limit for file uploads
     app.use(json({ limit: '50mb' }));
     app.use(express.urlencoded({ extended: true, limit: '50mb' }));

@@ -1,14 +1,20 @@
-import { Controller, Post, Get, UploadedFile, UseInterceptors, Res, Body, Query } from '@nestjs/common';
+import { Controller, Post, Get, UploadedFile, UseInterceptors, Res, Body, Query, Req, Logger } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { AppService } from './app.service';
+import { SecurityService } from './security.service';
 import * as multer from 'multer';
 import * as os from 'os';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  private readonly logger = new Logger(AppController.name);
+
+  constructor(
+    private readonly appService: AppService,
+    private readonly securityService: SecurityService
+  ) {}
 
   // Health check endpoint
   @Get()
@@ -58,6 +64,7 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async convertWordToPdf(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -65,12 +72,31 @@ export class AppController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
+      // Security validation
+      this.validateFileAndRequest(file, req, 'office');
+      
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Converting Word to PDF: ${sanitizedFilename}, size: ${file.size} bytes`);
+      
       const output = await this.appService.convertLibreOffice(file, 'pdf');
-      res.set({ 'Content-Type': 'application/pdf' });
+      res.set({ 
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${sanitizedFilename.replace(/\.(docx?|txt|rtf)$/i, '.pdf')}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
+      });
       res.send(output);
     } catch (error) {
-      console.error('Word to PDF conversion error:', error.message);
-      res.status(500).json({ error: 'Failed to convert Word to PDF', message: error.message });
+      this.logger.error('Word to PDF conversion error:', error.message);
+      
+      if (error.message.includes('Security validation failed')) {
+        return res.status(400).json({ 
+          error: 'Security validation failed', 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ error: 'Failed to convert Word to PDF', message: error.message });
+      }
     }
   }
 
@@ -80,6 +106,7 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async convertExcelToPdf(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -87,12 +114,31 @@ export class AppController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
+      // Security validation
+      this.validateFileAndRequest(file, req, 'office');
+      
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Converting Excel to PDF: ${sanitizedFilename}, size: ${file.size} bytes`);
+      
       const output = await this.appService.convertLibreOffice(file, 'pdf');
-      res.set({ 'Content-Type': 'application/pdf' });
+      res.set({ 
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${sanitizedFilename.replace(/\.(xlsx?|csv)$/i, '.pdf')}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
+      });
       res.send(output);
     } catch (error) {
-      console.error('Excel to PDF conversion error:', error.message);
-      res.status(500).json({ error: 'Failed to convert Excel to PDF', message: error.message });
+      this.logger.error('Excel to PDF conversion error:', error.message);
+      
+      if (error.message.includes('Security validation failed')) {
+        return res.status(400).json({ 
+          error: 'Security validation failed', 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ error: 'Failed to convert Excel to PDF', message: error.message });
+      }
     }
   }
 
@@ -102,6 +148,7 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async convertPptToPdf(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -109,8 +156,19 @@ export class AppController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
+      // Security validation
+      this.validateFileAndRequest(file, req, 'office');
+      
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Converting PowerPoint to PDF: ${sanitizedFilename}, size: ${file.size} bytes`);
+      
       const output = await this.appService.convertLibreOffice(file, 'pdf');
-      res.set({ 'Content-Type': 'application/pdf' });
+      res.set({ 
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${sanitizedFilename.replace(/\.(pptx?|odp)$/i, '.pdf')}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
+      });
       res.send(output);
     } catch (error) {
       console.error('PowerPoint to PDF conversion error:', error.message);
@@ -124,6 +182,7 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async convertPdfToWord(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -131,29 +190,50 @@ export class AppController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
-      // Validate file type
+      // Security validation
+      this.validateFileAndRequest(file, req, 'pdf');
+      
+      // Additional PDF-specific validations
       if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+        return res.status(400).json({ 
+          error: 'Invalid file type', 
+          message: 'Only PDF files are allowed for this conversion',
+          receivedType: file.mimetype 
+        });
       }
 
       // Validate file size (PDFs larger than 50MB may cause issues)
       if (file.size > 50 * 1024 * 1024) {
-        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
+        return res.status(400).json({ 
+          error: 'File too large', 
+          message: 'PDF file must be smaller than 50MB',
+          fileSize: `${Math.round(file.size / 1024 / 1024)}MB` 
+        });
       }
       
-      console.log(`Converting PDF to Word: ${file.originalname}, size: ${file.size} bytes`);
+      // Sanitize filename for logging
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Converting PDF to Word: ${sanitizedFilename}, size: ${file.size} bytes`);
+      
       const output = await this.appService.convertLibreOffice(file, 'docx');
       
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.docx')}"` 
+        'Content-Disposition': `attachment; filename="${sanitizedFilename.replace('.pdf', '.docx')}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
       });
       res.send(output);
     } catch (error) {
-      console.error('PDF to Word conversion error:', error.message);
+      this.logger.error('PDF to Word conversion error:', error.message);
       
       // Provide more specific error messages
-      if (error.message.includes('timeout')) {
+      if (error.message.includes('Security validation failed')) {
+        return res.status(400).json({ 
+          error: 'Security validation failed', 
+          message: error.message 
+        });
+      } else if (error.message.includes('timeout')) {
         return res.status(408).json({ 
           error: 'Conversion timeout', 
           message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
@@ -203,6 +283,7 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async convertPdfToExcel(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -210,28 +291,48 @@ export class AppController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
+      // Security validation
+      this.validateFileAndRequest(file, req, 'pdf');
+      
       // Validate file type
       if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+        return res.status(400).json({ 
+          error: 'Invalid file type', 
+          message: 'Only PDF files are allowed for this conversion',
+          receivedType: file.mimetype 
+        });
       }
 
       // Validate file size
       if (file.size > 50 * 1024 * 1024) {
-        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
+        return res.status(400).json({ 
+          error: 'File too large', 
+          message: 'PDF file must be smaller than 50MB',
+          fileSize: `${Math.round(file.size / 1024 / 1024)}MB` 
+        });
       }
       
-      console.log(`Converting PDF to Excel: ${file.originalname}, size: ${file.size} bytes`);
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Converting PDF to Excel: ${sanitizedFilename}, size: ${file.size} bytes`);
+      
       const output = await this.appService.convertLibreOffice(file, 'xlsx');
       
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.xlsx')}"` 
+        'Content-Disposition': `attachment; filename="${sanitizedFilename.replace('.pdf', '.xlsx')}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
       });
       res.send(output);
     } catch (error) {
-      console.error('PDF to Excel conversion error:', error.message);
+      this.logger.error('PDF to Excel conversion error:', error.message);
       
-      if (error.message.includes('timeout')) {
+      if (error.message.includes('Security validation failed')) {
+        return res.status(400).json({ 
+          error: 'Security validation failed', 
+          message: error.message 
+        });
+      } else if (error.message.includes('timeout')) {
         return res.status(408).json({ 
           error: 'Conversion timeout', 
           message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
@@ -271,6 +372,7 @@ export class AppController {
   @UseInterceptors(FileInterceptor('file'))
   async convertPdfToPpt(
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -278,28 +380,48 @@ export class AppController {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
+      // Security validation
+      this.validateFileAndRequest(file, req, 'pdf');
+      
       // Validate file type
       if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
+        return res.status(400).json({ 
+          error: 'Invalid file type', 
+          message: 'Only PDF files are allowed for this conversion',
+          receivedType: file.mimetype 
+        });
       }
 
       // Validate file size
       if (file.size > 50 * 1024 * 1024) {
-        return res.status(400).json({ error: 'PDF file is too large. Please use a file smaller than 50MB.' });
+        return res.status(400).json({ 
+          error: 'File too large', 
+          message: 'PDF file must be smaller than 50MB',
+          fileSize: `${Math.round(file.size / 1024 / 1024)}MB` 
+        });
       }
       
-      console.log(`Converting PDF to PowerPoint: ${file.originalname}, size: ${file.size} bytes`);
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Converting PDF to PowerPoint: ${sanitizedFilename}, size: ${file.size} bytes`);
+      
       const output = await this.appService.convertLibreOffice(file, 'pptx');
       
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.pptx')}"` 
+        'Content-Disposition': `attachment; filename="${sanitizedFilename.replace('.pdf', '.pptx')}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
       });
       res.send(output);
     } catch (error) {
-      console.error('PDF to PowerPoint conversion error:', error.message);
+      this.logger.error('PDF to PowerPoint conversion error:', error.message);
       
-      if (error.message.includes('timeout')) {
+      if (error.message.includes('Security validation failed')) {
+        return res.status(400).json({ 
+          error: 'Security validation failed', 
+          message: error.message 
+        });
+      } else if (error.message.includes('timeout')) {
         return res.status(408).json({ 
           error: 'Conversion timeout', 
           message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
@@ -422,6 +544,7 @@ export class AppController {
   async compressPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('quality') quality: string = 'moderate',
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     try {
@@ -429,17 +552,35 @@ export class AppController {
         return res.status(400).json({ error: 'No PDF file uploaded' });
       }
       
-      // Validate file type
-      if (file.mimetype !== 'application/pdf') {
-        return res.status(400).json({ error: 'Uploaded file is not a PDF' });
-      }
+      // Security validation
+      this.validateFileAndRequest(file, req, 'pdf');
       
-      const output = await this.appService.compressPdf(file, quality);
-      res.set({ 'Content-Type': 'application/pdf' });
+      // Validate and sanitize quality parameter
+      const sanitizedQuality = this.securityService.validateQualityParameter(quality);
+      
+      const sanitizedFilename = this.securityService.sanitizeFilename(file.originalname);
+      this.logger.log(`Compressing PDF: ${sanitizedFilename}, quality: ${sanitizedQuality}, size: ${file.size} bytes`);
+      
+      const output = await this.appService.compressPdf(file, sanitizedQuality);
+      
+      res.set({ 
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="compressed_${sanitizedFilename}"`,
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY'
+      });
       res.send(output);
     } catch (error) {
-      console.error('PDF compression error:', error.message);
-      res.status(500).json({ error: 'Failed to compress PDF', message: error.message });
+      this.logger.error('PDF compression error:', error.message);
+      
+      if (error.message.includes('Security validation failed')) {
+        return res.status(400).json({ 
+          error: 'Security validation failed', 
+          message: error.message 
+        });
+      } else {
+        res.status(500).json({ error: 'Failed to compress PDF', message: error.message });
+      }
     }
   }
 
@@ -459,6 +600,33 @@ export class AppController {
         error: 'Failed to check ConvertAPI status', 
         message: error.message 
       });
+    }
+  }
+
+  // Security validation helper method
+  private validateFileAndRequest(file: Express.Multer.File, req: Request, fileType: 'pdf' | 'office'): void {
+    // Validate request source
+    const sourceValidation = this.securityService.validateRequestSource(req);
+    this.logger.log(`Request validation: ${sourceValidation.message}`);
+
+    // Validate file security
+    const fileValidation = this.securityService.validateFile(file, fileType);
+    
+    if (!fileValidation.isValid) {
+      this.logger.error(`File validation failed for ${file.originalname}: ${fileValidation.errors.join(', ')}`);
+      throw new Error(`Security validation failed: ${fileValidation.errors.join(', ')}`);
+    }
+
+    // Log warnings if any
+    if (fileValidation.warnings.length > 0) {
+      this.logger.warn(`File validation warnings for ${file.originalname}: ${fileValidation.warnings.join(', ')}`);
+    }
+
+    // Validate file buffer for malicious content
+    const bufferValidation = this.securityService.validateFileBuffer(file.buffer);
+    if (!bufferValidation.isValid) {
+      this.logger.error(`Buffer validation failed for ${file.originalname}: ${bufferValidation.message}`);
+      throw new Error(`File content validation failed: ${bufferValidation.message}`);
     }
   }
 }
