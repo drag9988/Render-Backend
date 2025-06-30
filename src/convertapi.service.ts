@@ -146,12 +146,12 @@ export class ConvertApiService {
       // Format-specific parameters with validation
       if (targetFormat === 'docx') {
         formData.append('DocxVersion', '2019');
-        formData.append('PageRange', '1-');
+        // Don't specify PageRange to convert all pages
       } else if (targetFormat === 'xlsx') {
         formData.append('WorksheetName', 'Sheet1');
-        formData.append('PageRange', '1-');
+        // Don't specify PageRange to convert all pages
       } else if (targetFormat === 'pptx') {
-        formData.append('PageRange', '1-');
+        // Don't specify PageRange to convert all pages
       } else {
         throw new BadRequestException(`Unsupported target format: ${targetFormat}`);
       }
