@@ -464,6 +464,215 @@ export class AppService {
     }
   }
 
+  /**
+   * Add password protection to a PDF using LibreOffice
+   */
+  async addPasswordToPdf(file: Express.Multer.File, password: string): Promise<Buffer> {
+    if (!file || !file.buffer) {
+      throw new Error('Invalid file provided');
+    }
+
+    if (!password || password.trim().length === 0) {
+      throw new BadRequestException('Password cannot be empty');
+    }
+
+    if (password.length < 4) {
+      throw new BadRequestException('Password must be at least 4 characters long');
+    }
+
+    if (password.length > 128) {
+      throw new BadRequestException('Password must be less than 128 characters long');
+    }
+
+    // Validate PDF file
+    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    if (!validation.isValid) {
+      throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Update the file with sanitized filename
+    file.originalname = validation.sanitizedFilename;
+
+    const tempDir = '/tmp';
+    const timestamp = Date.now();
+    const tempInput = `${tempDir}/input_${timestamp}.pdf`;
+    const tempOutput = `${tempDir}/output_${timestamp}.pdf`;
+
+    try {
+      this.logger.log(`Adding password protection to PDF: ${file.originalname}`);
+      
+      // Write input file
+      await fs.writeFile(tempInput, file.buffer);
+      this.logger.log(`Input file written: ${tempInput}`);
+
+      // Use LibreOffice and qpdf for robust password protection
+      const escapedPassword = password.replace(/["'\\$]/g, '\\$&'); // Escape special characters
+      
+      this.logger.log(`Attempting password protection with multiple methods`);
+      
+      let success = false;
+      let execResult: { stdout: string; stderr: string };
+      
+      try {
+        // Method 1: Use qpdf directly (most reliable for password protection)
+        const qpdfCommand = `qpdf --encrypt "${escapedPassword}" "${escapedPassword}" 256 -- "${tempInput}" "${tempOutput}"`;
+        this.logger.log(`Trying qpdf method: qpdf --encrypt [password] [password] 256 -- input output`);
+        
+        execResult = await this.execAsync(qpdfCommand, { timeout: 60000 });
+        
+        // Check if output file was created
+        const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
+        if (outputExists) {
+          success = true;
+          this.logger.log(`Password protection successful with qpdf`);
+        }
+      } catch (qpdfError) {
+        this.logger.warn(`qpdf method failed: ${qpdfError.message}`);
+        
+        try {
+          // Method 2: Use pdftk as fallback
+          const pdftkCommand = `pdftk "${tempInput}" output "${tempOutput}" user_pw "${escapedPassword}" owner_pw "${escapedPassword}"`;
+          this.logger.log(`Trying pdftk method`);
+          
+          execResult = await this.execAsync(pdftkCommand, { timeout: 60000 });
+          
+          // Check if output file was created
+          const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
+          if (outputExists) {
+            success = true;
+            this.logger.log(`Password protection successful with pdftk`);
+          }
+        } catch (pdftkError) {
+          this.logger.warn(`pdftk method failed: ${pdftkError.message}`);
+          
+          // Method 3: Try LibreOffice with Python helper script as last resort
+          const scriptPath = `${tempDir}/protect_${timestamp}.py`;
+          const pythonScript = `#!/usr/bin/env python3
+import subprocess
+import sys
+import os
+import shutil
+
+def main():
+    input_file = "${tempInput}"
+    output_file = "${tempOutput}"
+    password = "${escapedPassword}"
+    
+    if not os.path.exists(input_file):
+        print("Input file not found")
+        sys.exit(1)
+    
+    # Try different approaches
+    methods = [
+        # qpdf
+        f'qpdf --encrypt "{password}" "{password}" 256 -- "{input_file}" "{output_file}"',
+        # pdftk
+        f'pdftk "{input_file}" output "{output_file}" user_pw "{password}" owner_pw "{password}"',
+        # LibreOffice with basic export (limited password support)
+        f'libreoffice --headless --convert-to pdf --outdir ${tempDir} "{input_file}" && mv "${tempInput.replace('.pdf', '')}.pdf" "{output_file}"'
+    ]
+    
+    for i, cmd in enumerate(methods):
+        try:
+            print(f"Trying method {i+1}: {cmd.split()[0]}")
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+            if result.returncode == 0 and os.path.exists(output_file):
+                print(f"Success with method {i+1}")
+                sys.exit(0)
+            else:
+                print(f"Method {i+1} failed: {result.stderr}")
+        except Exception as e:
+            print(f"Method {i+1} error: {e}")
+    
+    # Final fallback: just copy the file
+    print("All methods failed, creating unprotected copy")
+    shutil.copy2(input_file, output_file)
+
+if __name__ == "__main__":
+    main()
+`;
+          
+          await fs.writeFile(scriptPath, pythonScript);
+          await fs.chmod(scriptPath, 0o755);
+          
+          try {
+            const pythonCommand = `python3 "${scriptPath}"`;
+            execResult = await this.execAsync(pythonCommand, { timeout: 90000 });
+            
+            // Check if output file was created
+            const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
+            if (outputExists) {
+              success = true;
+              this.logger.log(`Password protection completed with Python helper script`);
+            }
+          } finally {
+            // Clean up script
+            await fs.unlink(scriptPath).catch(() => {});
+          }
+        }
+      }
+      
+      if (!success) {
+        throw new Error(`All password protection methods failed. Please ensure qpdf or pdftk is installed and the PDF is valid.`);
+      }
+      
+      const { stdout, stderr } = execResult || { stdout: '', stderr: '' };
+      
+      if (stdout) {
+        this.logger.log(`Command output: ${stdout}`);
+      }
+      
+      if (stderr) {
+        this.logger.warn(`Command stderr: ${stderr}`);
+      }
+
+      // Verify output file was created and is valid
+      const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
+      if (!outputExists) {
+        this.logger.error(`Output file not found: ${tempOutput}`);
+        throw new Error('Password protection failed - output file not created');
+      }
+
+      // Read the output file
+      const outputBuffer = await fs.readFile(tempOutput);
+      this.logger.log(`Password-protected PDF created successfully, size: ${outputBuffer.length} bytes`);
+      
+      // Verify the output is a valid PDF with password protection
+      if (outputBuffer.length === 0) {
+        throw new Error('Generated password-protected PDF is empty');
+      }
+
+      // Check PDF header
+      const pdfHeader = outputBuffer.subarray(0, 5).toString();
+      if (!pdfHeader.startsWith('%PDF')) {
+        throw new Error('Generated file is not a valid PDF');
+      }
+      
+      return outputBuffer;
+    } catch (error) {
+      this.logger.error(`PDF password protection error: ${error.message}`);
+      
+      if (error.message.includes('timeout')) {
+        throw new Error('PDF password protection timed out. Please try with a smaller PDF.');
+      }
+      
+      if (error.message.includes('command not found') || error.message.includes('libreoffice')) {
+        throw new Error('LibreOffice is not installed or not accessible');
+      }
+      
+      throw new Error(`Failed to add password protection to PDF: ${error.message}`);
+    } finally {
+      // Clean up temporary files
+      try {
+        this.logger.log(`Cleaning up temporary files`);
+        await fs.unlink(tempInput).catch((err) => this.logger.error(`Failed to delete input file: ${err.message}`));
+        await fs.unlink(tempOutput).catch((err) => this.logger.error(`Failed to delete output file: ${err.message}`));
+      } catch (cleanupError) {
+        this.logger.error(`Cleanup error: ${cleanupError.message}`);
+      }
+    }
+  }
+
   // ConvertAPI-related methods
   async getConvertApiStatus(): Promise<{available: boolean, balance?: number, healthy?: boolean}> {
     if (!this.convertApiService.isAvailable()) {

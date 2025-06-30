@@ -526,4 +526,68 @@ export class AppController {
       });
     }
   }
+
+  // PDF password protection
+  @Post('add-password-to-pdf')
+  @Throttle({ default: { limit: 10, ttl: 86400000 } }) // 10 requests per day for password protection
+  @UseInterceptors(FileInterceptor('file'))
+  async addPasswordToPdf(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('password') password: string,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!file) {
+        return res.status(400).json({ error: 'No PDF file uploaded' });
+      }
+
+      if (!password) {
+        return res.status(400).json({ error: 'Password is required' });
+      }
+
+      // Validate PDF file
+      const validation = this.fileValidationService.validateFile(file, 'pdf');
+      if (!validation.isValid) {
+        return res.status(400).json({ 
+          error: 'PDF validation failed', 
+          details: validation.errors 
+        });
+      }
+
+      // Update file with sanitized filename
+      file.originalname = validation.sanitizedFilename;
+      
+      console.log(`Adding password protection to PDF: ${file.originalname}, size: ${file.size} bytes`);
+      const output = await this.appService.addPasswordToPdf(file, password);
+      
+      res.set({ 
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '_protected.pdf')}"` 
+      });
+      res.send(output);
+    } catch (error) {
+      console.error('PDF password protection error:', error.message);
+      
+      if (error instanceof BadRequestException) {
+        return res.status(400).json({ error: 'Invalid input', message: error.message });
+      }
+      
+      if (error.message.includes('timeout')) {
+        return res.status(408).json({ 
+          error: 'Password protection timeout', 
+          message: 'The PDF password protection is taking too long. Please try with a smaller PDF.' 
+        });
+      } else if (error.message.includes('LibreOffice')) {
+        return res.status(503).json({ 
+          error: 'Service unavailable', 
+          message: 'LibreOffice service is not available. Please try again later.' 
+        });
+      }
+      
+      res.status(500).json({ 
+        error: 'Failed to add password protection to PDF', 
+        message: error.message 
+      });
+    }
+  }
 }
