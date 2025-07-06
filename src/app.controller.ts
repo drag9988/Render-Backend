@@ -473,7 +473,11 @@ export class AppController {
   // PDF compression with quality options
   @Post('compress-pdf')
   @Throttle({ default: { limit: 15, ttl: 86400000 } }) // 15 requests per day for compression
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB file size limit
+    },
+  }))
   async compressPdf(
     @UploadedFile() file: Express.Multer.File,
     @Query('quality') quality: string = 'moderate',
@@ -482,6 +486,16 @@ export class AppController {
     try {
       if (!file) {
         return res.status(400).json({ error: 'No PDF file uploaded' });
+      }
+
+      // Additional file size check
+      if (file.size > 50 * 1024 * 1024) {
+        return res.status(400).json({ 
+          error: 'File too large', 
+          message: 'PDF file size must be less than 50MB',
+          currentSize: `${(file.size / (1024 * 1024)).toFixed(2)}MB`,
+          maxSize: '50MB'
+        });
       }
 
       // Validate PDF file
@@ -497,51 +511,104 @@ export class AppController {
       file.originalname = validation.sanitizedFilename;
       
       console.log(`Starting PDF compression: ${file.originalname}, size: ${file.size} bytes, quality: ${quality}`);
+      
+      // Enhanced logging for image-heavy PDFs
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      if (file.size > 10 * 1024 * 1024) { // >10MB
+        console.log(`Large PDF detected (${sizeMB}MB) - likely contains high-resolution images from mobile camera`);
+        console.log(`Using extended timeout for image-heavy PDF compression...`);
+      }
+      
+      // Log the quality setting being used
+      console.log(`Compression quality setting: ${quality}`);
+      
+      const startTime = Date.now();
       const output = await this.appService.compressPdf(file, quality);
+      const processingTime = (Date.now() - startTime) / 1000;
+      
+      const outputSizeMB = (output.length / (1024 * 1024)).toFixed(2);
+      const compressionRatio = ((1 - output.length / file.size) * 100).toFixed(1);
+      
+      console.log(`PDF compression completed: ${file.originalname}`);
+      console.log(`  Original: ${sizeMB}MB`);
+      console.log(`  Compressed: ${outputSizeMB}MB`);
+      console.log(`  Compression: ${compressionRatio}%`);
+      console.log(`  Processing time: ${processingTime}s`);
+      
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
       console.error('PDF compression error:', error.message);
+      console.error('Error stack:', error.stack);
+      
+      // Check for multer file size errors first
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ 
+          error: 'File too large', 
+          message: 'PDF file size exceeds the 50MB limit',
+          maxSize: '50MB'
+        });
+      }
       
       if (error instanceof BadRequestException) {
         return res.status(400).json({ error: 'Invalid file', message: error.message });
       }
       
-      // Specific error handling for image-heavy PDFs and timeouts
+      // Enhanced error handling for image-heavy PDFs and timeouts
       if (error.message.includes('timeout') || error.message.includes('timed out')) {
+        const isImageHeavyError = error.message.includes('mobile camera') || error.message.includes('high-resolution');
+        
         return res.status(408).json({ 
           error: 'Compression timeout', 
-          message: 'The PDF compression is taking too long. This often happens with PDFs containing high-resolution images (like mobile camera photos).',
+          message: isImageHeavyError 
+            ? 'This PDF contains high-resolution images (likely mobile camera photos) that take too long to compress.'
+            : 'The PDF compression is taking too long. This often happens with large or complex PDFs.',
           suggestions: [
             'Try using "low" quality setting for faster compression',
             'Reduce image resolution before creating the PDF',
-            'Try with a smaller PDF file',
-            'Consider splitting large PDFs into smaller files'
+            'Try with a smaller PDF file (under 10MB for best results)',
+            'Consider compressing images separately before adding to PDF',
+            'Split large PDFs into smaller files'
           ]
         });
-      } else if (error.message.includes('image-heavy') || error.message.includes('high-resolution')) {
+      } else if (error.message.includes('image-heavy') || error.message.includes('high-resolution') || error.message.includes('mobile camera')) {
         return res.status(422).json({ 
           error: 'High-resolution images detected', 
           message: 'This PDF contains high-resolution images (likely from mobile camera photos) that are difficult to compress.',
           suggestions: [
-            'Use "low" quality setting for better compression',
-            'Reduce image quality before creating the PDF',
-            'Try compressing images separately before adding to PDF'
+            'Use "low" quality setting for better compression of mobile photos',
+            'Reduce image quality/resolution before creating the PDF',
+            'Try compressing images to JPEG format before adding to PDF',
+            'Consider using image editing software to reduce file sizes first'
           ]
         });
-      } else if (error.message.includes('service is not available') || error.message.includes('command not found')) {
+      } else if (error.message.includes('service is not available') || error.message.includes('command not found') || error.message.includes('ghostscript')) {
         return res.status(503).json({ 
           error: 'Service unavailable', 
-          message: 'PDF compression service is temporarily unavailable. Please try again later.' 
+          message: 'PDF compression service is temporarily unavailable. The Ghostscript service may be down.' 
         });
       } else if (error.message.includes('All compression methods failed')) {
         return res.status(422).json({ 
           error: 'Compression failed', 
-          message: 'This PDF could not be compressed. It may contain complex content or be corrupted.',
+          message: 'This PDF could not be compressed using any available method. It may contain very complex content or be corrupted.',
           suggestions: [
             'Try with a different PDF file',
             'Check if the PDF is password-protected',
-            'Try converting the PDF to images and back to PDF first'
+            'Try converting the PDF to images and back to PDF first',
+            'Ensure the PDF is not corrupted',
+            'Try with a smaller, simpler PDF'
+          ]
+        });
+      } else if (error.message.includes('poppler-utils') || error.message.includes('pdfinfo') || error.message.includes('pdfimages')) {
+        // Handle analysis errors gracefully
+        return res.status(500).json({ 
+          error: 'PDF analysis failed', 
+          message: 'Could not analyze PDF content, but compression may still work.',
+          details: 'PDF content analysis tools are not available',
+          suggestions: [
+            'Try compression anyway - it may still work',
+            'Use "low" quality setting',
+            'Try with a smaller PDF file'
           ]
         });
       }
@@ -552,8 +619,9 @@ export class AppController {
         details: error.message,
         suggestions: [
           'Try with a different PDF file',
-          'Use "low" quality setting',
-          'Ensure the PDF is not corrupted'
+          'Use "low" quality setting for mobile camera photos',
+          'Ensure the PDF is not corrupted or password-protected',
+          'Try with a smaller file (under 50MB)'
         ]
       });
     }

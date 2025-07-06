@@ -399,20 +399,37 @@ export class AppService {
       // Analyze PDF to determine if it's image-heavy (like mobile camera photos)
       let isImageHeavy = false;
       try {
+        this.logger.log('Analyzing PDF content for compression optimization...');
+        
+        // Try to get PDF info using poppler-utils (already installed)
         const { stdout: pdfInfo } = await this.execAsync(`pdfinfo "${input}"`, { timeout: 10000 });
+        this.logger.log(`PDF Info: ${pdfInfo.substring(0, 200)}...`);
+        
+        // Try to list images in PDF
         const { stdout: pdfImages } = await this.execAsync(`pdfimages -list "${input}"`, { timeout: 15000 }).catch(() => ({ stdout: '' }));
         
-        // Check if PDF contains many images or large images
+        // Check if PDF contains many images or large images (typical of mobile camera PDFs)
         const imageCount = (pdfImages.match(/page/g) || []).length;
         const hasLargeImages = pdfImages.includes('DCT') || pdfImages.includes('JPEG'); // Common in mobile photos
-        isImageHeavy = imageCount > 3 || file.buffer.length > 10 * 1024 * 1024 || hasLargeImages; // >10MB or >3 images or has JPEG images
+        const hasHighRes = pdfImages.includes('2000') || pdfImages.includes('3000') || pdfImages.includes('4000'); // High resolution
         
-        this.logger.log(`PDF analysis: Image count: ${imageCount}, Size: ${file.buffer.length} bytes, Has large images: ${hasLargeImages}, Image-heavy: ${isImageHeavy}`);
+        // Determine if PDF is image-heavy based on multiple factors
+        isImageHeavy = imageCount > 3 || file.buffer.length > 10 * 1024 * 1024 || hasLargeImages || hasHighRes;
+        
+        this.logger.log(`PDF analysis results:`);
+        this.logger.log(`  - Image count: ${imageCount}`);
+        this.logger.log(`  - File size: ${(file.buffer.length / (1024 * 1024)).toFixed(2)}MB`);
+        this.logger.log(`  - Has JPEG/DCT images: ${hasLargeImages}`);
+        this.logger.log(`  - Has high-resolution images: ${hasHighRes}`);
+        this.logger.log(`  - Classified as image-heavy: ${isImageHeavy}`);
+        
       } catch (analysisError) {
         this.logger.warn(`PDF analysis failed: ${analysisError.message}`);
-        // Assume image-heavy if analysis fails and file is large
+        this.logger.warn('This may be due to missing poppler-utils or corrupted PDF');
+        
+        // Fallback: Assume image-heavy based on file size alone
         isImageHeavy = file.buffer.length > 5 * 1024 * 1024; // >5MB
-        this.logger.log(`Assuming image-heavy PDF due to size: ${file.buffer.length} bytes`);
+        this.logger.log(`Fallback analysis: Assuming image-heavy based on file size: ${(file.buffer.length / (1024 * 1024)).toFixed(2)}MB > 5MB = ${isImageHeavy}`);
       }
 
       // Enhanced compression settings for image-heavy PDFs
@@ -461,8 +478,9 @@ export class AppService {
         this.logger.log(`Compression attempt ${i + 1}: Using ${isImageHeavy ? 'image-optimized' : 'standard'} compression`);
         
         try {
-          // Increase timeout significantly for image-heavy PDFs
-          const timeout = isImageHeavy ? 300000 : 120000; // 5 minutes for images, 2 minutes for others
+          // Increase timeout significantly for image-heavy PDFs (mobile camera photos)
+          const timeout = isImageHeavy ? 600000 : 120000; // 10 minutes for images, 2 minutes for others
+          this.logger.log(`Using timeout: ${timeout / 1000}s for ${isImageHeavy ? 'image-heavy' : 'standard'} PDF compression`);
           
           const { stdout, stderr } = await this.execAsync(command, { timeout });
           
@@ -489,21 +507,49 @@ export class AppService {
           
         } catch (execError) {
           lastError = execError.message;
-          this.logger.warn(`Compression attempt ${i + 1} failed: ${execError.message}`);
+          this.logger.error(`Compression attempt ${i + 1} failed: ${execError.message}`);
+          
+          // Log additional details for debugging
+          if (isImageHeavy) {
+            this.logger.error(`Failed compressing image-heavy PDF (likely mobile camera photos)`);
+          }
           
           // Clean up failed attempt
           await fs.unlink(output).catch(() => {});
           
-          // If timeout, try next method
-          if (execError.message.includes('timeout') && i < compressionCommands.length - 1) {
-            this.logger.log('Compression timed out, trying next method...');
+          // Special handling for timeout errors on image-heavy PDFs
+          if (execError.message.includes('timeout')) {
+            if (isImageHeavy) {
+              this.logger.error(`Timeout during image-heavy PDF compression. PDF likely contains high-resolution mobile camera photos that are too complex to compress quickly.`);
+              if (i === compressionCommands.length - 1) {
+                throw new Error(`Compression timeout: This PDF contains high-resolution images (likely mobile camera photos) that take too long to compress. Try using "low" quality setting or reduce image resolution before creating the PDF.`);
+              }
+            } else {
+              this.logger.error(`Unexpected timeout during standard PDF compression.`);
+              if (i === compressionCommands.length - 1) {
+                throw new Error(`Compression timeout: The PDF compression is taking too long. Please try with a smaller file or lower quality setting.`);
+              }
+            }
+            this.logger.log('Trying next compression method after timeout...');
+            continue;
+          }
+          
+          // If it's not a timeout, try next method for image-heavy PDFs
+          if (isImageHeavy && i < compressionCommands.length - 1) {
+            this.logger.log('Image-heavy PDF compression failed, trying next method...');
             continue;
           }
         }
       }
 
       if (!compressionSuccess) {
-        throw new Error(`All compression methods failed. Last error: ${lastError}`);
+        this.logger.error(`All compression methods failed for ${file.originalname}. File size: ${(file.buffer.length / (1024 * 1024)).toFixed(2)}MB, Image-heavy: ${isImageHeavy}`);
+        
+        if (isImageHeavy) {
+          throw new Error(`All compression methods failed for this image-heavy PDF (mobile camera photos detected). The PDF contains high-resolution images that are too complex to compress efficiently. Try reducing image quality before creating the PDF.`);
+        } else {
+          throw new Error(`All compression methods failed. Last error: ${lastError}`);
+        }
       }
 
       // Check if output file exists
@@ -543,14 +589,21 @@ export class AppService {
       return result;
     } catch (error) {
       this.logger.error(`PDF compression error: ${error.message}`);
+      this.logger.error(`Error stack trace:`, error.stack);
       
       // Provide specific error messages for different failure cases
       if (error.message.includes('timeout')) {
-        throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
-      } else if (error.message.includes('gs: command not found')) {
-        throw new Error('PDF compression service is not available. Please try again later.');
-      } else if (error.message.includes('image-heavy')) {
-        throw new Error('This PDF contains high-resolution images that are difficult to compress. Try reducing image quality before creating the PDF.');
+        if (error.message.includes('mobile camera') || error.message.includes('high-resolution')) {
+          throw new Error('PDF compression timeout: This PDF contains high-resolution mobile camera photos that take too long to compress. Try reducing image quality or using "low" quality setting.');
+        } else {
+          throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
+        }
+      } else if (error.message.includes('gs: command not found') || error.message.includes('ghostscript')) {
+        throw new Error('PDF compression service is not available. Ghostscript is required but not found.');
+      } else if (error.message.includes('image-heavy') || error.message.includes('mobile camera')) {
+        throw new Error('This PDF contains high-resolution mobile camera photos that are difficult to compress. Try reducing image quality before creating the PDF or use "low" quality setting.');
+      } else if (error.message.includes('All compression methods failed')) {
+        throw error; // Pass through the detailed error from compression attempts
       } else {
         throw new Error(`Failed to compress PDF: ${error.message}`);
       }
