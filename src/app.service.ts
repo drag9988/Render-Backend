@@ -390,7 +390,7 @@ export class AppService {
     const output = `${tempDir}/${timestamp}_output.pdf`;
     
     try {
-      this.logger.log(`Starting PDF compression, input size: ${file.buffer.length} bytes`);
+      this.logger.log(`Starting PDF compression, input size: ${file.buffer.length} bytes, quality: ${sanitizedQuality}`);
       
       // Write the uploaded PDF to disk
       await fs.writeFile(input, file.buffer);
@@ -404,13 +404,15 @@ export class AppService {
         
         // Check if PDF contains many images or large images
         const imageCount = (pdfImages.match(/page/g) || []).length;
-        isImageHeavy = imageCount > 3 || file.buffer.length > 10 * 1024 * 1024; // >10MB or >3 images
+        const hasLargeImages = pdfImages.includes('DCT') || pdfImages.includes('JPEG'); // Common in mobile photos
+        isImageHeavy = imageCount > 3 || file.buffer.length > 10 * 1024 * 1024 || hasLargeImages; // >10MB or >3 images or has JPEG images
         
-        this.logger.log(`PDF analysis: Image count: ${imageCount}, Size: ${file.buffer.length} bytes, Image-heavy: ${isImageHeavy}`);
+        this.logger.log(`PDF analysis: Image count: ${imageCount}, Size: ${file.buffer.length} bytes, Has large images: ${hasLargeImages}, Image-heavy: ${isImageHeavy}`);
       } catch (analysisError) {
         this.logger.warn(`PDF analysis failed: ${analysisError.message}`);
         // Assume image-heavy if analysis fails and file is large
         isImageHeavy = file.buffer.length > 5 * 1024 * 1024; // >5MB
+        this.logger.log(`Assuming image-heavy PDF due to size: ${file.buffer.length} bytes`);
       }
 
       // Enhanced compression settings for image-heavy PDFs
@@ -419,16 +421,19 @@ export class AppService {
       if (isImageHeavy) {
         this.logger.log('Detected image-heavy PDF (mobile camera photos), using specialized compression');
         
-        // Multiple compression strategies for image-heavy PDFs
+        // Multiple compression strategies for image-heavy PDFs (mobile camera photos)
         compressionCommands = [
-          // Strategy 1: Aggressive image compression for mobile photos
+          // Strategy 1: Ultra-aggressive compression for mobile photos (lowest file size)
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=72 -dGrayImageResolution=72 -dMonoImageResolution=150 -dColorImageDownsampleType=/Average -dGrayImageDownsampleType=/Average -dColorConversionStrategy=/RGB -dProcessColorModel=/DeviceRGB -sOutputFile="${output}" "${input}"`,
+          
+          // Strategy 2: Aggressive image compression for mobile photos
           `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=150 -dGrayImageResolution=150 -dMonoImageResolution=300 -dColorImageDownsampleType=/Bicubic -dGrayImageDownsampleType=/Bicubic -dMonoImageDownsampleType=/Bicubic -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -dColorConversionStrategy=/RGB -dProcessColorModel=/DeviceRGB -sOutputFile="${output}" "${input}"`,
           
-          // Strategy 2: Screen quality with image optimization
-          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=96 -dGrayImageResolution=96 -dMonoImageResolution=150 -dColorImageDownsampleType=/Average -dGrayImageDownsampleType=/Average -dColorConversionStrategy=/RGB -sOutputFile="${output}" "${input}"`,
+          // Strategy 3: JPEG quality optimization for camera photos
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=120 -dGrayImageResolution=120 -dMonoImageResolution=200 -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -dColorImageDict="{/QFactor 0.3 /Blend 1 /HSamples [1 1 1 1] /VSamples [1 1 1 1]}" -dGrayImageDict="{/QFactor 0.3 /Blend 1 /HSamples [1 1 1 1] /VSamples [1 1 1 1]}" -sOutputFile="${output}" "${input}"`,
           
-          // Strategy 3: Custom compression for large images
-          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=120 -dGrayImageResolution=120 -dMonoImageResolution=200 -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -dColorImageDict="{/QFactor 0.5 /Blend 1 /HSamples [1 1 1 1] /VSamples [1 1 1 1]}" -dGrayImageDict="{/QFactor 0.5 /Blend 1 /HSamples [1 1 1 1] /VSamples [1 1 1 1]}" -sOutputFile="${output}" "${input}"`
+          // Strategy 4: Fallback with minimal compression
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/default -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"`
         ];
       } else {
         // Standard compression for text-based or mixed PDFs

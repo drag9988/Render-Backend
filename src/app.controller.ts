@@ -496,6 +496,7 @@ export class AppController {
       // Update file with sanitized filename
       file.originalname = validation.sanitizedFilename;
       
+      console.log(`Starting PDF compression: ${file.originalname}, size: ${file.size} bytes, quality: ${quality}`);
       const output = await this.appService.compressPdf(file, quality);
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
@@ -521,7 +522,7 @@ export class AppController {
       } else if (error.message.includes('image-heavy') || error.message.includes('high-resolution')) {
         return res.status(422).json({ 
           error: 'High-resolution images detected', 
-          message: 'This PDF contains high-resolution images that are difficult to compress.',
+          message: 'This PDF contains high-resolution images (likely from mobile camera photos) that are difficult to compress.',
           suggestions: [
             'Use "low" quality setting for better compression',
             'Reduce image quality before creating the PDF',
@@ -533,11 +534,22 @@ export class AppController {
           error: 'Service unavailable', 
           message: 'PDF compression service is temporarily unavailable. Please try again later.' 
         });
+      } else if (error.message.includes('All compression methods failed')) {
+        return res.status(422).json({ 
+          error: 'Compression failed', 
+          message: 'This PDF could not be compressed. It may contain complex content or be corrupted.',
+          suggestions: [
+            'Try with a different PDF file',
+            'Check if the PDF is password-protected',
+            'Try converting the PDF to images and back to PDF first'
+          ]
+        });
       }
       
       res.status(500).json({ 
         error: 'Failed to compress PDF', 
-        message: error.message,
+        message: 'An unexpected error occurred during compression.',
+        details: error.message,
         suggestions: [
           'Try with a different PDF file',
           'Use "low" quality setting',
