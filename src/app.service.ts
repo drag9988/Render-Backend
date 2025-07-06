@@ -366,13 +366,19 @@ export class AppService {
   }
 
   async compressPdf(file: Express.Multer.File, quality: string = 'moderate'): Promise<Buffer> {
+    console.log(`🔥 APP.SERVICE compressPdf called at ${new Date().toISOString()}`);
+    console.log(`🔥 File buffer size: ${file?.buffer?.length || 'NO BUFFER'} bytes`);
+    console.log(`🔥 Quality: ${quality}`);
+    
     if (!file || !file.buffer) {
+      console.log(`🔥 ERROR: Invalid PDF file provided`);
       throw new Error('Invalid PDF file provided');
     }
 
     // Validate PDF file
     const validation = this.fileValidationService.validateFile(file, 'pdf');
     if (!validation.isValid) {
+      console.log(`🔥 ERROR: PDF validation failed: ${validation.errors.join(', ')}`);
       throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
     }
 

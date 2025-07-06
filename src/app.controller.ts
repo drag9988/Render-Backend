@@ -483,8 +483,15 @@ export class AppController {
     @Query('quality') quality: string = 'moderate',
     @Res() res: Response,
   ) {
+    // CRITICAL DEBUG: Log as soon as request hits the endpoint
+    console.log(`🔥 COMPRESS-PDF REQUEST RECEIVED at ${new Date().toISOString()}`);
+    console.log(`🔥 Request headers:`, JSON.stringify(Object.keys(res.req.headers || {})));
+    console.log(`🔥 File received:`, file ? `YES (${file.size} bytes)` : 'NO');
+    console.log(`🔥 Quality parameter:`, quality);
+    
     try {
       if (!file) {
+        console.log(`🔥 ERROR: No file uploaded`);
         return res.status(400).json({ error: 'No PDF file uploaded' });
       }
 

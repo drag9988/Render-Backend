@@ -28,6 +28,18 @@ async function bootstrap() {
     
     // Use PORT from environment variables (for Railway) or default to 3000
     const port = process.env.PORT || 3000;
+    
+    // Add request logging middleware to track all incoming requests
+    app.use((req, res, next) => {
+      const timestamp = new Date().toISOString();
+      console.log(`🌐 [${timestamp}] ${req.method} ${req.url} - Body size: ${req.get('Content-Length') || 'unknown'} bytes`);
+      if (req.url.includes('compress-pdf')) {
+        console.log(`🔥 COMPRESS-PDF REQUEST DETECTED IN MIDDLEWARE`);
+        console.log(`🔥 Content-Type: ${req.get('Content-Type') || 'none'}`);
+        console.log(`🔥 User-Agent: ${req.get('User-Agent') || 'none'}`);
+      }
+      next();
+    });
     const host = '0.0.0.0'; // Explicitly bind to all interfaces
     
     // Listen on all interfaces (0.0.0.0) for better Railway compatibility
