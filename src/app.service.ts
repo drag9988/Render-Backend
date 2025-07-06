@@ -389,20 +389,6 @@ export class AppService {
     const input = `${tempDir}/${timestamp}_input.pdf`;
     const output = `${tempDir}/${timestamp}_output.pdf`;
     
-    // Map quality settings to Ghostscript PDF settings
-    // /screen - low quality, smaller size (72 dpi)
-    // /ebook - medium quality, medium size (150 dpi)
-    // /printer - high quality, larger size (300 dpi)
-    const qualitySettings = {
-      'low': '/screen',
-      'moderate': '/ebook',
-      'high': '/printer'
-    };
-    
-    // Use sanitized quality
-    const pdfSetting = qualitySettings[sanitizedQuality] || '/ebook';
-    this.logger.log(`PDF compression quality: ${sanitizedQuality}, using setting: ${pdfSetting}`);
-
     try {
       this.logger.log(`Starting PDF compression, input size: ${file.buffer.length} bytes`);
       
@@ -410,18 +396,109 @@ export class AppService {
       await fs.writeFile(input, file.buffer);
       this.logger.log(`PDF written to ${input}`);
 
-      // Execute Ghostscript for PDF compression with input validation
-      const command = `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"`;
-      this.logger.log(`Executing command: ${command}`);
-      
-      const { stdout, stderr } = await this.execAsync(command, { timeout: 120000 }); // 2 minute timeout
-      
-      if (stdout) {
-        this.logger.log(`Ghostscript output: ${stdout}`);
+      // Analyze PDF to determine if it's image-heavy (like mobile camera photos)
+      let isImageHeavy = false;
+      try {
+        const { stdout: pdfInfo } = await this.execAsync(`pdfinfo "${input}"`, { timeout: 10000 });
+        const { stdout: pdfImages } = await this.execAsync(`pdfimages -list "${input}"`, { timeout: 15000 }).catch(() => ({ stdout: '' }));
+        
+        // Check if PDF contains many images or large images
+        const imageCount = (pdfImages.match(/page/g) || []).length;
+        isImageHeavy = imageCount > 3 || file.buffer.length > 10 * 1024 * 1024; // >10MB or >3 images
+        
+        this.logger.log(`PDF analysis: Image count: ${imageCount}, Size: ${file.buffer.length} bytes, Image-heavy: ${isImageHeavy}`);
+      } catch (analysisError) {
+        this.logger.warn(`PDF analysis failed: ${analysisError.message}`);
+        // Assume image-heavy if analysis fails and file is large
+        isImageHeavy = file.buffer.length > 5 * 1024 * 1024; // >5MB
       }
+
+      // Enhanced compression settings for image-heavy PDFs
+      let compressionCommands: string[];
       
-      if (stderr) {
-        this.logger.error(`Ghostscript compression error: ${stderr}`);
+      if (isImageHeavy) {
+        this.logger.log('Detected image-heavy PDF (mobile camera photos), using specialized compression');
+        
+        // Multiple compression strategies for image-heavy PDFs
+        compressionCommands = [
+          // Strategy 1: Aggressive image compression for mobile photos
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=150 -dGrayImageResolution=150 -dMonoImageResolution=300 -dColorImageDownsampleType=/Bicubic -dGrayImageDownsampleType=/Bicubic -dMonoImageDownsampleType=/Bicubic -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -dColorConversionStrategy=/RGB -dProcessColorModel=/DeviceRGB -sOutputFile="${output}" "${input}"`,
+          
+          // Strategy 2: Screen quality with image optimization
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/screen -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=96 -dGrayImageResolution=96 -dMonoImageResolution=150 -dColorImageDownsampleType=/Average -dGrayImageDownsampleType=/Average -dColorConversionStrategy=/RGB -sOutputFile="${output}" "${input}"`,
+          
+          // Strategy 3: Custom compression for large images
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -dColorImageResolution=120 -dGrayImageResolution=120 -dMonoImageResolution=200 -dColorImageFilter=/DCTEncode -dGrayImageFilter=/DCTEncode -dColorImageDict="{/QFactor 0.5 /Blend 1 /HSamples [1 1 1 1] /VSamples [1 1 1 1]}" -dGrayImageDict="{/QFactor 0.5 /Blend 1 /HSamples [1 1 1 1] /VSamples [1 1 1 1]}" -sOutputFile="${output}" "${input}"`
+        ];
+      } else {
+        // Standard compression for text-based or mixed PDFs
+        const qualitySettings = {
+          'low': '/screen',
+          'moderate': '/ebook', 
+          'high': '/printer'
+        };
+        
+        const pdfSetting = qualitySettings[sanitizedQuality] || '/ebook';
+        this.logger.log(`PDF compression quality: ${sanitizedQuality}, using setting: ${pdfSetting}`);
+        
+        compressionCommands = [
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=${pdfSetting} -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"`,
+          `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dPDFSETTINGS=/ebook -dNOPAUSE -dQUIET -dBATCH -sOutputFile="${output}" "${input}"` // fallback
+        ];
+      }
+
+      let compressionSuccess = false;
+      let lastError = '';
+
+      // Try compression commands in order
+      for (let i = 0; i < compressionCommands.length; i++) {
+        const command = compressionCommands[i];
+        this.logger.log(`Compression attempt ${i + 1}: Using ${isImageHeavy ? 'image-optimized' : 'standard'} compression`);
+        
+        try {
+          // Increase timeout significantly for image-heavy PDFs
+          const timeout = isImageHeavy ? 300000 : 120000; // 5 minutes for images, 2 minutes for others
+          
+          const { stdout, stderr } = await this.execAsync(command, { timeout });
+          
+          if (stdout) {
+            this.logger.log(`Ghostscript output: ${stdout}`);
+          }
+          
+          if (stderr) {
+            this.logger.warn(`Ghostscript stderr: ${stderr}`);
+          }
+
+          // Check if output file exists and has reasonable size
+          try {
+            await fs.access(output);
+            const stats = await fs.stat(output);
+            if (stats.size > 0) {
+              compressionSuccess = true;
+              this.logger.log(`Compression successful on attempt ${i + 1}, output size: ${stats.size} bytes`);
+              break;
+            }
+          } catch (err) {
+            this.logger.error(`Output file check failed: ${err.message}`);
+          }
+          
+        } catch (execError) {
+          lastError = execError.message;
+          this.logger.warn(`Compression attempt ${i + 1} failed: ${execError.message}`);
+          
+          // Clean up failed attempt
+          await fs.unlink(output).catch(() => {});
+          
+          // If timeout, try next method
+          if (execError.message.includes('timeout') && i < compressionCommands.length - 1) {
+            this.logger.log('Compression timed out, trying next method...');
+            continue;
+          }
+        }
+      }
+
+      if (!compressionSuccess) {
+        throw new Error(`All compression methods failed. Last error: ${lastError}`);
       }
 
       // Check if output file exists
@@ -439,19 +516,39 @@ export class AppService {
       
       // Validate compressed file is not corrupted
       if (result.length < 100) {
-        throw new Error('Compressed PDF appears to be corrupted');
+        throw new Error('Compressed PDF file appears to be corrupted (too small)');
       }
+
+      // Check PDF header
+      const pdfHeader = result.subarray(0, 5).toString();
+      if (!pdfHeader.startsWith('%PDF')) {
+        throw new Error('Compressed file is not a valid PDF');
+      }
+      
+      // Calculate compression ratio
+      const compressionRatio = ((file.buffer.length - result.length) / file.buffer.length * 100).toFixed(1);
+      this.logger.log(`Compression ratio: ${compressionRatio}% reduction`);
       
       // If the compressed file is larger than the original, return the original
       if (result.length > file.buffer.length) {
-        this.logger.log(`Compressed file is larger than original, returning original file`);
+        this.logger.warn('Compressed file is larger than original, returning original file');
         return file.buffer;
       }
       
       return result;
     } catch (error) {
       this.logger.error(`PDF compression error: ${error.message}`);
-      throw new Error(`Failed to compress PDF: ${error.message}`);
+      
+      // Provide specific error messages for different failure cases
+      if (error.message.includes('timeout')) {
+        throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
+      } else if (error.message.includes('gs: command not found')) {
+        throw new Error('PDF compression service is not available. Please try again later.');
+      } else if (error.message.includes('image-heavy')) {
+        throw new Error('This PDF contains high-resolution images that are difficult to compress. Try reducing image quality before creating the PDF.');
+      } else {
+        throw new Error(`Failed to compress PDF: ${error.message}`);
+      }
     } finally {
       // Clean up temporary files
       try {

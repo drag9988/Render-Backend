@@ -501,10 +501,49 @@ export class AppController {
       res.send(output);
     } catch (error) {
       console.error('PDF compression error:', error.message);
+      
       if (error instanceof BadRequestException) {
         return res.status(400).json({ error: 'Invalid file', message: error.message });
       }
-      res.status(500).json({ error: 'Failed to compress PDF', message: error.message });
+      
+      // Specific error handling for image-heavy PDFs and timeouts
+      if (error.message.includes('timeout') || error.message.includes('timed out')) {
+        return res.status(408).json({ 
+          error: 'Compression timeout', 
+          message: 'The PDF compression is taking too long. This often happens with PDFs containing high-resolution images (like mobile camera photos).',
+          suggestions: [
+            'Try using "low" quality setting for faster compression',
+            'Reduce image resolution before creating the PDF',
+            'Try with a smaller PDF file',
+            'Consider splitting large PDFs into smaller files'
+          ]
+        });
+      } else if (error.message.includes('image-heavy') || error.message.includes('high-resolution')) {
+        return res.status(422).json({ 
+          error: 'High-resolution images detected', 
+          message: 'This PDF contains high-resolution images that are difficult to compress.',
+          suggestions: [
+            'Use "low" quality setting for better compression',
+            'Reduce image quality before creating the PDF',
+            'Try compressing images separately before adding to PDF'
+          ]
+        });
+      } else if (error.message.includes('service is not available') || error.message.includes('command not found')) {
+        return res.status(503).json({ 
+          error: 'Service unavailable', 
+          message: 'PDF compression service is temporarily unavailable. Please try again later.' 
+        });
+      }
+      
+      res.status(500).json({ 
+        error: 'Failed to compress PDF', 
+        message: error.message,
+        suggestions: [
+          'Try with a different PDF file',
+          'Use "low" quality setting',
+          'Ensure the PDF is not corrupted'
+        ]
+      });
     }
   }
 

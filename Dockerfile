@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     python3 \
     python3-pip \
+    pdfinfo \
+    pdfimages \
+    pdftotext \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
