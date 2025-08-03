@@ -11,16 +11,53 @@ async function bootstrap() {
     
     const app = await NestFactory.create(AppModule);
     
-    // Configure CORS for all origins
-    app.use(cors({
-      origin: '*',
-      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    // Configure CORS FIRST - this is critical for cross-origin requests
+    app.enableCors({
+      origin: true, // Allow all origins
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: [
+        'Accept',
+        'Authorization',
+        'Content-Type',
+        'X-Requested-With',
+        'Range',
+        'Origin',
+        'X-Forwarded-For',
+        'X-Real-IP',
+        'User-Agent',
+        'Cache-Control'
+      ],
+      exposedHeaders: [
+        'X-RateLimit-Limit',
+        'X-RateLimit-Remaining', 
+        'X-RateLimit-Reset',
+        'Retry-After',
+        'Content-Length',
+        'Content-Range',
+        'Content-Disposition'
+      ],
+      credentials: true,
       preflightContinue: false,
       optionsSuccessStatus: 204,
-      credentials: true,
-      // Allow rate limiting headers to be visible to frontend
-      exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
-    }));
+    });
+    
+    // Additional manual CORS middleware for complex cases
+    app.use((req, res, next) => {
+      // Set CORS headers manually as backup
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Accept,Authorization,Content-Type,X-Requested-With,Range,Origin,X-Forwarded-For,X-Real-IP,User-Agent,Cache-Control');
+      res.header('Access-Control-Expose-Headers', 'X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset,Retry-After,Content-Length,Content-Range,Content-Disposition');
+      
+      // Handle preflight requests
+      if (req.method === 'OPTIONS') {
+        console.log(`🔄 Handling preflight request for ${req.url}`);
+        res.sendStatus(204);
+        return;
+      }
+      
+      next();
+    });
     
     // Increase payload size limit for file uploads
     app.use(json({ limit: '50mb' }));
@@ -51,14 +88,50 @@ async function bootstrap() {
       try {
         const secondApp = await NestFactory.create(AppModule);
         
-        // Configure the same middleware for the backup server
-        secondApp.use(cors({
-          origin: '*',
-          methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        // Configure the same CORS settings for the backup server
+        secondApp.enableCors({
+          origin: true, // Allow all origins
+          methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+          allowedHeaders: [
+            'Accept',
+            'Authorization',
+            'Content-Type',
+            'X-Requested-With',
+            'Range',
+            'Origin',
+            'X-Forwarded-For',
+            'X-Real-IP',
+            'User-Agent',
+            'Cache-Control'
+          ],
+          exposedHeaders: [
+            'X-RateLimit-Limit',
+            'X-RateLimit-Remaining', 
+            'X-RateLimit-Reset',
+            'Retry-After',
+            'Content-Length',
+            'Content-Range',
+            'Content-Disposition'
+          ],
+          credentials: true,
           preflightContinue: false,
           optionsSuccessStatus: 204,
-          credentials: true,
-        }));
+        });
+        
+        // Additional manual CORS middleware for backup server
+        secondApp.use((req, res, next) => {
+          res.header('Access-Control-Allow-Origin', '*');
+          res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+          res.header('Access-Control-Allow-Headers', 'Accept,Authorization,Content-Type,X-Requested-With,Range,Origin,X-Forwarded-For,X-Real-IP,User-Agent,Cache-Control');
+          res.header('Access-Control-Expose-Headers', 'X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset,Retry-After,Content-Length,Content-Range,Content-Disposition');
+          
+          if (req.method === 'OPTIONS') {
+            res.sendStatus(204);
+            return;
+          }
+          next();
+        });
+        
         secondApp.use(json({ limit: '50mb' }));
         secondApp.use(express.urlencoded({ extended: true, limit: '50mb' }));
         

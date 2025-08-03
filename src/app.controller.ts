@@ -56,6 +56,40 @@ export class AppController {
     return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
   }
 
+  // CORS test endpoint to verify CORS configuration
+  @Get('cors-test')
+  @SkipThrottle()
+  corsTest(@Res() res: Response) {
+    // Manually set CORS headers for testing
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Accept,Authorization,Content-Type,X-Requested-With,Range,Origin');
+    
+    return res.status(200).json({ 
+      message: 'CORS test successful',
+      timestamp: new Date().toISOString(),
+      headers: {
+        origin: res.req.get('Origin') || 'none',
+        userAgent: res.req.get('User-Agent') || 'none',
+        method: res.req.method
+      }
+    });
+  }
+
+  @Post('cors-test')
+  @SkipThrottle()
+  corsTestPost(@Res() res: Response, @Body() body: any) {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Accept,Authorization,Content-Type,X-Requested-With,Range,Origin');
+    
+    return res.status(200).json({ 
+      message: 'CORS POST test successful',
+      receivedBody: body,
+      timestamp: new Date().toISOString()
+    });
+  }
+
   // Word to PDF conversion
   @Post('convert-word-to-pdf')
   @Throttle({ default: { limit: 20, ttl: 86400000 } }) // 20 requests per day for office to PDF
