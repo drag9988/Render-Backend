@@ -409,6 +409,16 @@ export class AppController {
       // Save file temporarily for analysis
       const timestamp = Date.now();
       const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
+      
+      // Ensure temp directory exists
+      try {
+        await require('fs').promises.mkdir(tempDir, { recursive: true });
+        await require('fs').promises.chmod(tempDir, 0o777);
+      } catch (dirError) {
+        console.error(`Failed to create temp directory ${tempDir}: ${dirError.message}`);
+        return res.status(500).json({ error: 'Server configuration error', message: 'Cannot access temporary storage' });
+      }
+      
       const tempInput = `${tempDir}/${timestamp}_analysis.pdf`;
       
       await require('fs').promises.writeFile(tempInput, file.buffer);

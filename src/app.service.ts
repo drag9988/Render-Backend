@@ -101,6 +101,16 @@ export class AppService {
     const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
     this.logger.log(`Using temp directory: ${tempDir}`);
     
+    // Ensure temp directory exists and is writable
+    try {
+      await fs.mkdir(tempDir, { recursive: true });
+      await fs.chmod(tempDir, 0o777);
+      this.logger.log(`Successfully ensured temp directory exists: ${tempDir}`);
+    } catch (dirError) {
+      this.logger.error(`Failed to create temp directory ${tempDir}: ${dirError.message}`);
+      throw new Error(`Cannot create or access temp directory: ${dirError.message}`);
+    }
+    
     const tempInput = `${tempDir}/${timestamp}_${sanitizedFilename}`;
     const tempOutput = tempInput.replace(/\.[^.]+$/, `.${format}`);
 
@@ -392,6 +402,16 @@ export class AppService {
     const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
     this.logger.log(`Using temp directory for PDF compression: ${tempDir}`);
     
+    // Ensure temp directory exists and is writable
+    try {
+      await fs.mkdir(tempDir, { recursive: true });
+      await fs.chmod(tempDir, 0o777);
+      this.logger.log(`Successfully ensured temp directory exists: ${tempDir}`);
+    } catch (dirError) {
+      this.logger.error(`Failed to create temp directory ${tempDir}: ${dirError.message}`);
+      throw new Error(`Cannot create or access temp directory: ${dirError.message}`);
+    }
+    
     const input = `${tempDir}/${timestamp}_input.pdf`;
     const output = `${tempDir}/${timestamp}_output.pdf`;
     
@@ -654,7 +674,18 @@ export class AppService {
     // Update the file with sanitized filename
     file.originalname = validation.sanitizedFilename;
 
-    const tempDir = '/tmp';
+    const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
+    
+    // Ensure temp directory exists and is writable
+    try {
+      await fs.mkdir(tempDir, { recursive: true });
+      await fs.chmod(tempDir, 0o777);
+      this.logger.log(`Successfully ensured temp directory exists: ${tempDir}`);
+    } catch (dirError) {
+      this.logger.error(`Failed to create temp directory ${tempDir}: ${dirError.message}`);
+      throw new Error(`Cannot create or access temp directory: ${dirError.message}`);
+    }
+    
     const timestamp = Date.now();
     const tempInput = `${tempDir}/input_${timestamp}.pdf`;
     const tempOutput = `${tempDir}/output_${timestamp}.pdf`;

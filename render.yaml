@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: pdf-converter-backend
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TEMP_DIR
+        value: /tmp/pdf-converter
+    disk:
+      name: pdf-temp-storage
+      mountPath: /tmp/pdf-converter
+      sizeGB: 1
