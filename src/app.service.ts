@@ -3,7 +3,6 @@ import * as fs from 'fs/promises';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as multer from 'multer';
-import { ConvertApiService } from './convertapi.service';
 import { OnlyOfficeService } from './onlyoffice.service';
 import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
@@ -14,7 +13,6 @@ export class AppService {
   private readonly execAsync = promisify(exec);
 
   constructor(
-    private readonly convertApiService: ConvertApiService,
     private readonly onlyOfficeService: OnlyOfficeService,
     private readonly onlyOfficeEnhancedService: OnlyOfficeEnhancedService,
     private readonly fileValidationService: FileValidationService
@@ -873,30 +871,14 @@ if __name__ == "__main__":
     }
   }
 
-  // ConvertAPI-related methods
+  // ConvertAPI-related methods (DEPRECATED - now using Enhanced ONLYOFFICE)
   async getConvertApiStatus(): Promise<{available: boolean, balance?: number, healthy?: boolean}> {
-    if (!this.convertApiService.isAvailable()) {
-      return { available: false };
-    }
-
-    try {
-      const [balance, healthy] = await Promise.all([
-        this.convertApiService.getBalance(),
-        this.convertApiService.healthCheck()
-      ]);
-
-      return {
-        available: true,
-        balance,
-        healthy
-      };
-    } catch (error) {
-      this.logger.error(`Failed to get ConvertAPI status: ${error.message}`);
-      return {
-        available: true,
-        healthy: false
-      };
-    }
+    // ConvertAPI has been replaced with Enhanced ONLYOFFICE Service
+    return { 
+      available: false,
+      balance: null,
+      healthy: false
+    };
   }
 
   // ONLYOFFICE-related methods
