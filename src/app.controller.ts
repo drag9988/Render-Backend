@@ -678,8 +678,27 @@ export class AppController {
     }
   }
 
+  // ConvertAPI status endpoint
+  @Get('convertapi/status')
+  @SkipThrottle() // No rate limiting for status checks
+  async getConvertApiStatus(@Res() res: Response) {
+    try {
+      const status = await this.appService.getConvertApiStatus();
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        convertapi: status
+      });
+    } catch (error) {
+      console.error('ConvertAPI status check error:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to check ConvertAPI status', 
+        message: error.message 
+      });
+    }
+  }
+
   // ONLYOFFICE status endpoint
-  @Get('status/onlyoffice')
+  @Get('onlyoffice/status')
   @SkipThrottle() // No rate limiting for status checks
   async getOnlyOfficeStatus(@Res() res: Response) {
     try {

@@ -14,6 +14,7 @@ export class AppService {
   private readonly execAsync = promisify(exec);
 
   constructor(
+    private readonly convertApiService: ConvertApiService,
     private readonly onlyOfficeService: OnlyOfficeService,
     private readonly onlyOfficeEnhancedService: OnlyOfficeEnhancedService,
     private readonly fileValidationService: FileValidationService
@@ -86,10 +87,32 @@ export class AppService {
           return await this.onlyOfficeService.convertPdfToPptx(file.buffer, file.originalname);
         }
       } catch (onlyOfficeError) {
-        this.logger.warn(`Original ONLYOFFICE service failed for ${file.originalname}: ${onlyOfficeError.message}. Using LibreOffice as final fallback.`);
+        this.logger.warn(`Original ONLYOFFICE service failed for ${file.originalname}: ${onlyOfficeError.message}. Trying ConvertAPI.`);
       }
     } else {
-      this.logger.log('Original ONLYOFFICE service not available, using LibreOffice as final fallback.');
+      this.logger.log('Original ONLYOFFICE service not available, trying ConvertAPI backup.');
+    }
+
+    // Tertiary: Use ConvertAPI as backup (only if both ONLYOFFICE methods fail)
+    if (this.convertApiService.isAvailable()) {
+      try {
+        this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using ConvertAPI as backup`);
+        if (format === 'docx') {
+          return await this.convertApiService.convertPdfToDocx(file.buffer, file.originalname);
+        } else if (format === 'xlsx') {
+          return await this.convertApiService.convertPdfToXlsx(file.buffer, file.originalname);
+        } else if (format === 'pptx') {
+          return await this.convertApiService.convertPdfToPptx(file.buffer, file.originalname);
+        }
+      } catch (convertApiError) {
+        this.logger.warn(`ConvertAPI backup failed for ${file.originalname}: ${convertApiError.message}. Using LibreOffice as final fallback.`);
+        // Don't throw authentication errors anymore since ONLYOFFICE is primary
+        if (convertApiError.message && (convertApiError.message.includes('401') || convertApiError.message.includes('authentication failed'))) {
+          this.logger.warn('ConvertAPI authentication issue detected. Consider using ONLYOFFICE Document Server for better reliability.');
+        }
+      }
+    } else {
+      this.logger.log('ConvertAPI not available as backup. Using LibreOffice directly.');
     }
 
     // Final fallback: LibreOffice (always available)
@@ -869,6 +892,32 @@ if __name__ == "__main__":
       } catch (cleanupError) {
         this.logger.error(`Cleanup error: ${cleanupError.message}`);
       }
+    }
+  }
+
+  // ConvertAPI-related methods
+  async getConvertApiStatus(): Promise<{available: boolean, balance?: number, healthy?: boolean}> {
+    if (!this.convertApiService.isAvailable()) {
+      return { available: false };
+    }
+
+    try {
+      const [balance, healthy] = await Promise.all([
+        this.convertApiService.getBalance(),
+        this.convertApiService.healthCheck()
+      ]);
+
+      return {
+        available: true,
+        balance,
+        healthy
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get ConvertAPI status: ${error.message}`);
+      return {
+        available: true,
+        healthy: false
+      };
     }
   }
 

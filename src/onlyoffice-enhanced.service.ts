@@ -248,123 +248,208 @@ export class OnlyOfficeEnhancedService {
 import sys
 import os
 import subprocess
+import io
 from pathlib import Path
 
-def install_package(package):
+def install_package(package, extra=""):
     try:
         # Use --break-system-packages to handle externally managed environments (PEP 668)
         # This is generally safe in a containerized/isolated environment.
-        print(f"Installing {package}...");
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package, "--break-system-packages"]);
-        print(f"{package} installed successfully.");
+        package_spec = f"{package}{extra}"
+        print(f"Installing {package_spec}...");
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_spec, "--break-system-packages"]);
+        print(f"{package_spec} installed successfully.");
     except subprocess.CalledProcessError as e:
-        print(f"Could not install {package}. Pip command failed: {e}");
-        # Suggest manual installation as a fallback.
-        print(f"Please try installing the package manually, e.g., 'apt install python3-{package.replace('_', '-')}' or 'pip install {package}' in a virtual environment.");
+        print(f"Could not install {package_spec}. Pip command failed: {e}");
+        print(f"Please try installing the package manually, e.g., 'pip install {package_spec}' in a virtual environment.");
         raise
 
-def convert_pdf(input_path, output_path, format_type):
-    try:
-        if format_type == 'docx':
-            try:
-                from pdf2docx import Converter
-                cv = Converter(input_path)
-                cv.convert(output_path, start=0, end=None)
-                cv.close()
-                print(f"✅ pdf2docx conversion successful")
-                return True
-            except ImportError:
-                install_package('pdf2docx')
-                from pdf2docx import Converter
-                cv = Converter(input_path)
-                cv.convert(output_path, start=0, end=None)
-                cv.close()
-                return True
-            except Exception as e:
-                print(f"❌ pdf2docx failed: {e}");
-                return False
-                
-        elif format_type == 'xlsx':
-            try:
-                import pdfplumber
-                import pandas as pd
-                
-                all_tables = []
-                with pdfplumber.open(input_path) as pdf:
-                    for page in pdf.pages:
-                        tables = page.extract_tables()
-                        for table in tables:
-                            if table:
-                                df = pd.DataFrame(table[1:], columns=table[0])
-                                all_tables.append(df)
-                
-                if all_tables:
-                    combined_df = pd.concat(all_tables, ignore_index=True)
-                    combined_df.to_excel(output_path, index=False)
-                else:
-                    text_data = []
-                    with pdfplumber.open(input_path) as pdf:
-                        for page in pdf.pages:
-                            text = page.extract_text()
-                            if text:
-                                text_data.append([text])
-                    df = pd.DataFrame(text_data, columns=['Content'])
-                    df.to_excel(output_path, index=False)
-                
-                print(f"✅ Excel conversion successful")
-                return True
-                
-            except ImportError:
-                install_package('pdfplumber')
-                install_package('pandas')
-                install_package('openpyxl')
-                import pdfplumber
-                import pandas as pd
-                # Retry logic after installation
-                # ... (same as above)
-                return True
-                
-        elif format_type == 'pptx':
-            try:
-                import pdfplumber
-                from pptx import Presentation
-                
-                prs = Presentation()
-                with pdfplumber.open(input_path) as pdf:
-                    for page_num, page in enumerate(pdf.pages):
-                        slide_layout = prs.slide_layouts[5]  # Blank slide
-                        slide = prs.slides.add_slide(slide_layout)
+def convert_to_docx(input_path, output_path):
+    try {
+        from pdf2docx import Converter
+        cv = Converter(input_path)
+        cv.convert(output_path, start=0, end=None)
+        cv.close()
+        print("✅ pdf2docx conversion successful")
+        return True
+    } except ImportError {
+        install_package('pdf2docx')
+        from pdf2docx import Converter
+        cv = Converter(input_path)
+        cv.convert(output_path, start=0, end=None)
+        cv.close()
+        print("✅ pdf2docx conversion successful after install")
+        return True
+    } catch (Exception e) {
+        print(f"❌ pdf2docx failed: {e}")
+        return False
+    }
+
+def convert_to_xlsx(input_path, output_path):
+    # Method 1: Try Camelot for structured tables
+    try {
+        import pandas as pd
+        import camelot
+        
+        # Use 'stream' for PDFs without clear table lines, 'lattice' for tables with lines.
+        # Stream is often a good general-purpose starting point.
+        tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
+        
+        if tables.n > 0:
+            with pd.ExcelWriter(output_path) as writer:
+                for i, table in enumerate(tables):
+                    table.df.to_excel(writer, sheet_name=f'Page_{table.page}_Table_{i+1}', index=False, header=True)
+            print(f"✅ Camelot conversion successful, found {tables.n} tables.")
+            return True
+        else {
+            print("Camelot did not find any tables. Falling back to pdfplumber.")
+        }
+    } catch (ImportError) {
+        print("Camelot not found, installing...")
+        install_package('camelot-py', extra="[cv]")
+        import pandas as pd
+        import camelot
+        tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
+        if tables.n > 0:
+            with pd.ExcelWriter(output_path) as writer:
+                for i, table in enumerate(tables):
+                    table.df.to_excel(writer, sheet_name=f'Page_{table.page}_Table_{i+1}', index=False, header=True)
+            print(f"✅ Camelot conversion successful after install, found {tables.n} tables.")
+            return True
+    } catch (Exception e) {
+        print(f"❌ Camelot failed: {e}. Falling back to pdfplumber.")
+    }
+
+    # Method 2: Fallback to pdfplumber for table extraction
+    try {
+        import pdfplumber
+        import pandas as pd
+
+        all_tables = []
+        with pdfplumber.open(input_path) as pdf:
+            for page in pdf.pages:
+                page_tables = page.extract_tables()
+                if page_tables:
+                    for table in page_tables:
+                        if table:
+                            df = pd.DataFrame(table[1:], columns=table[0])
+                            all_tables.append(df)
+        
+        if all_tables:
+            with pd.ExcelWriter(output_path) as writer:
+                for i, df in enumerate(all_tables):
+                    df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
+            print(f"✅ pdfplumber table extraction successful, found {len(all_tables)} tables.")
+            return True
+        else {
+            print("pdfplumber did not find any tables, extracting raw text as last resort.");
+            # If no tables, extract raw text per page
+            with pdfplumber.open(input_path) as pdf:
+                with pd.ExcelWriter(output_path) as writer:
+                    for i, page in enumerate(pdf.pages):
                         text = page.extract_text()
                         if text:
-                            txBox = slide.shapes.add_textbox(0, 0, prs.slide_width, prs.slide_height)
-                            tf = txBox.text_frame
-                            tf.text = text
-                
-                prs.save(output_path)
-                print(f"✅ PowerPoint conversion successful")
-                return True
-                
-            except ImportError:
-                install_package('pdfplumber')
-                install_package('python-pptx')
-                # Retry logic after installation
-                # ... (same as above)
-                return True
-        
+                            lines = text.split('\\n')
+                            df = pd.DataFrame(lines, columns=['Content']);
+                            df.to_excel(writer, sheet_name=f'Page_{i+1}_Text', index=False)
+            print("✅ pdfplumber raw text extraction successful.");
+            return True
+        }
+
+    } catch (ImportError) {
+        install_package('pdfplumber')
+        install_package('pandas')
+        install_package('openpyxl')
+        return convert_to_xlsx(input_path, output_path) # Retry after install
+    } catch (Exception e) {
+        print(f"❌ pdfplumber failed: {e}")
         return False
+    }
+
+def convert_to_pptx(input_path, output_path):
+    try {
+        import fitz  # PyMuPDF
+        from pptx import Presentation
+        from pptx.util import Emu
+
+        pdf_doc = fitz.open(input_path)
+        prs = Presentation()
         
-    except Exception as e:
-        print(f"❌ Python conversion error: {e}")
+        # Use dimensions of the first page for the presentation
+        first_page = pdf_doc.load_page(0)
+        prs.slide_width = Emu(first_page.rect.width)
+        prs.slide_height = Emu(first_page.rect.height)
+
+        for page_num in range(len(pdf_doc)):
+            page = pdf_doc.load_page(page_num)
+            slide_layout = prs.slide_layouts[6]  # Index 6 is a blank slide
+            slide = prs.slides.add_slide(slide_layout)
+
+            # Add PDF page as a background image to preserve layout perfectly (non-editable)
+            pix = page.get_pixmap(dpi=150)
+            image_stream = io.BytesIO(pix.tobytes("png"))
+            slide.shapes.add_picture(image_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
+
+            # Overlay extracted text for editability
+            blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
+            for block in blocks.get("blocks", []):
+                if block['type'] == 0:  # Text block
+                    for line in block.get("lines", []):
+                        for span in line.get("spans", []):
+                            text = span['text']
+                            if not text.strip():
+                                continue
+
+                            rect = span['bbox']
+                            font_size = span['size']
+                            
+                            left = Emu(rect[0])
+                            top = Emu(rect[1])
+                            width = Emu(rect[2] - rect[0])
+                            height = Emu(rect[3] - rect[1])
+                            
+                            if width > 0 and height > 0:
+                                txBox = slide.shapes.add_textbox(left, top, width, height)
+                                tf = txBox.text_frame
+                                tf.text = text
+                                p = tf.paragraphs[0]
+                                run = p.runs[0]
+                                font = run.font
+                                # Approximate font size. Pt to Emu is not direct, this is a heuristic.
+                                font.size = Emu(font_size * 0.95) 
+
+        prs.save(output_path)
+        print("✅ PyMuPDF to PPTX conversion successful")
+        return True
+
+    } catch (ImportError) {
+        install_package('PyMuPDF')
+        install_package('python-pptx')
+        return convert_to_pptx(input_path, output_path) # Retry after install
+    } catch (Exception e) {
+        print(f"❌ PyMuPDF to PPTX conversion failed: {e}")
         return False
+    }
+
+def convert_pdf(input_path, output_path, format_type):
+    success = False
+    if format_type == 'docx':
+        success = convert_to_docx(input_path, output_path)
+    elif format_type == 'xlsx':
+        success = convert_to_xlsx(input_path, output_path)
+    elif format_type == 'pptx':
+        success = convert_to_pptx(input_path, output_path)
+    
+    return success
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print(f"Usage: python {sys.argv[0]} input.pdf output.ext format");
+        print(f"Usage: python {sys.argv[0]} <input.pdf> <output.ext> <format>");
         sys.exit(1);
     
     input_file = sys.argv[1]
     output_file = sys.argv[2]
-    format_type = sys.argv[3]
+    format_type = sys.argv[3].lower();
     
     if not os.path.exists(input_file):
         print(f"❌ Input file not found: {input_file}")
@@ -375,7 +460,7 @@ if __name__ == "__main__":
         print(f"✅ Conversion completed: {output_file}")
         sys.exit(0)
     else:
-        print(f"❌ Conversion failed")
+        print(f"❌ Conversion failed for {input_file} to {format_type}")
         sys.exit(1)
 `;
   }
