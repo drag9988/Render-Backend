@@ -6,6 +6,7 @@ import * as multer from 'multer';
 import { OnlyOfficeService } from './onlyoffice.service';
 import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
+import * as path from 'path';
 
 @Injectable()
 export class AppService {
@@ -233,6 +234,19 @@ export class AppService {
       return result;
     } catch (error) {
       this.logger.error(`File conversion error: ${error.message}`);
+      
+      // Special handling for Excel to PDF conversion failures
+      if (file.mimetype.includes('sheet') && format === 'pdf' && 
+          (error.message.includes('export filter') || error.message.includes('no output') || error.message.includes('failed to process'))) {
+        this.logger.log(`Standard LibreOffice failed for Excel to PDF, trying enhanced commands`);
+        try {
+          return await this.executeEnhancedExcelToPdfConversion(tempInput, tempOutput, tempDir);
+        } catch (altError) {
+          this.logger.error(`Enhanced Excel to PDF conversion also failed: ${altError.message}`);
+          throw new Error(`Excel to PDF conversion failed with all methods. Standard error: ${error.message}. Enhanced error: ${altError.message}`);
+        }
+      }
+      
       throw new Error(`Failed to convert document to ${format}: ${error.message}`);
     } finally {
       // Clean up temporary files
@@ -440,6 +454,30 @@ export class AppService {
       await fs.unlink(generatedDocx).catch(() => {});
       throw error;
     }
+  }
+
+  private async executeEnhancedExcelToPdfConversion(tempInput: string, tempOutput: string, tempDir: string): Promise<Buffer> {
+    const commands = [
+      `libreoffice --headless --calc --convert-to pdf --outdir "${tempDir}" "${tempInput}"`,
+      `libreoffice --headless --infilter="calc_pdf_import" --convert-to pdf --outdir "${tempDir}" "${tempInput}"`
+    ];
+
+    let lastError = '';
+
+    for (const command of commands) {
+      try {
+        this.logger.log(`Executing enhanced command: ${command}`);
+        await this.execAsync(command, { timeout: 90000 });
+        const result = await fs.readFile(tempOutput);
+        if (result.length > 100) {
+          return result;
+        }
+      } catch (error) {
+        lastError = error.message;
+        this.logger.warn(`Enhanced command failed: ${lastError}`);
+      }
+    }
+    throw new Error(`Enhanced Excel to PDF conversion failed. Last error: ${lastError}`);
   }
 
   async analyzePdfFile(pdfPath: string): Promise<{isScanned: boolean, hasComplexLayout: boolean, isProtected: boolean, pageCount: number}> {
@@ -687,319 +725,318 @@ export class AppService {
     } catch (error) {
       this.logger.error(`PDF compression error: ${error.message}`);
       this.logger.error(`Error stack trace:`, error.stack);
+      this.logger.error(`PDF compression error: ${error.message}`);
+      this.logger.error(`Error stack trace:`, error.stack);// Provide specific error messages for different failure cases
       
-      // Provide specific error messages for different failure cases
-      if (error.message.includes('timeout')) {
+      // Provide specific error messages for different failure casesera') || error.message.includes('high-resolution')) {
+      if (error.message.includes('timeout')) { photos that take too long to compress. Try reducing image quality or using "low" quality setting.');
         if (error.message.includes('mobile camera') || error.message.includes('high-resolution')) {
-          throw new Error('PDF compression timeout: This PDF contains high-resolution mobile camera photos that take too long to compress. Try reducing image quality or using "low" quality setting.');
+          throw new Error('PDF compression timeout: This PDF contains high-resolution mobile camera photos that take too long to compress. Try reducing image quality or using "low" quality setting.');new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
         } else {
-          throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
+          throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');lse if (error.message.includes('gs: command not found') || error.message.includes('ghostscript')) {
         }
       } else if (error.message.includes('gs: command not found') || error.message.includes('ghostscript')) {
-        throw new Error('PDF compression service is not available. Ghostscript is required but not found.');
+        throw new Error('PDF compression service is not available. Ghostscript is required but not found.');o compress. Try reducing image quality before creating the PDF or use "low" quality setting.');
       } else if (error.message.includes('image-heavy') || error.message.includes('mobile camera')) {
-        throw new Error('This PDF contains high-resolution mobile camera photos that are difficult to compress. Try reducing image quality before creating the PDF or use "low" quality setting.');
+        throw new Error('This PDF contains high-resolution mobile camera photos that are difficult to compress. Try reducing image quality before creating the PDF or use "low" quality setting.');empts
       } else if (error.message.includes('All compression methods failed')) {
-        throw error; // Pass through the detailed error from compression attempts
+        throw error; // Pass through the detailed error from compression attemptsnew Error(`Failed to compress PDF: ${error.message}`);
       } else {
-        throw new Error(`Failed to compress PDF: ${error.message}`);
-      }
+        throw new Error(`Failed to compress PDF: ${error.message}`);inally {
+      }up temporary files
     } finally {
-      // Clean up temporary files
-      try {
-        this.logger.log(`Cleaning up temporary PDF files`);
+      // Clean up temporary filess.logger.log(`Cleaning up temporary PDF files`);
+      try {rror(`Failed to delete input PDF: ${err.message}`));
+        this.logger.log(`Cleaning up temporary PDF files`););
         await fs.unlink(input).catch((err) => this.logger.error(`Failed to delete input PDF: ${err.message}`));
-        await fs.unlink(output).catch((err) => this.logger.error(`Failed to delete output PDF: ${err.message}`));
+        await fs.unlink(output).catch((err) => this.logger.error(`Failed to delete output PDF: ${err.message}`));anup error: ${cleanupError.message}`);
       } catch (cleanupError) {
         this.logger.error(`Cleanup error: ${cleanupError.message}`);
       }
     }
-  }
-
-  /**
+  }  /**
    * Add password protection to a PDF using LibreOffice
    */
   async addPasswordToPdf(file: Express.Multer.File, password: string): Promise<Buffer> {
     if (!file || !file.buffer) {
       throw new Error('Invalid file provided');
-    }
-
+    }    if (!password || password.trim().length === 0) {
+ be empty');
     if (!password || password.trim().length === 0) {
       throw new BadRequestException('Password cannot be empty');
-    }
-
+    }    if (password.length < 4) {
+ption('Password must be at least 4 characters long');
     if (password.length < 4) {
       throw new BadRequestException('Password must be at least 4 characters long');
-    }
-
+    }    if (password.length > 128) {
+ion('Password must be less than 128 characters long');
     if (password.length > 128) {
       throw new BadRequestException('Password must be less than 128 characters long');
-    }
-
+    }    // Validate PDF file
+his.fileValidationService.validateFile(file, 'pdf');
     // Validate PDF file
-    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    const validation = this.fileValidationService.validateFile(file, 'pdf');ption(`PDF validation failed: ${validation.errors.join(', ')}`);
     if (!validation.isValid) {
       throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
-    }
-
+    }    // Update the file with sanitized filename
+lename;
     // Update the file with sanitized filename
-    file.originalname = validation.sanitizedFilename;
+    file.originalname = validation.sanitizedFilename;    const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
 
-    const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';
+    const tempDir = process.env.TEMP_DIR || require('os').tmpdir() || '/tmp';// Ensure temp directory exists and is writable
     
-    // Ensure temp directory exists and is writable
+    // Ensure temp directory exists and is writableit fs.mkdir(tempDir, { recursive: true });
     try {
-      await fs.mkdir(tempDir, { recursive: true });
+      await fs.mkdir(tempDir, { recursive: true });nsured temp directory exists: ${tempDir}`);
       await fs.chmod(tempDir, 0o777);
-      this.logger.log(`Successfully ensured temp directory exists: ${tempDir}`);
+      this.logger.log(`Successfully ensured temp directory exists: ${tempDir}`);`Failed to create temp directory ${tempDir}: ${dirError.message}`);
     } catch (dirError) {
       this.logger.error(`Failed to create temp directory ${tempDir}: ${dirError.message}`);
       throw new Error(`Cannot create or access temp directory: ${dirError.message}`);
-    }
-    
-    const timestamp = Date.now();
+    }const timestamp = Date.now();
+    /input_${timestamp}.pdf`;
+    const timestamp = Date.now();`;
     const tempInput = `${tempDir}/input_${timestamp}.pdf`;
-    const tempOutput = `${tempDir}/output_${timestamp}.pdf`;
-
+    const tempOutput = `${tempDir}/output_${timestamp}.pdf`;    try {
+s.logger.log(`Adding password protection to PDF: ${file.originalname}`);
     try {
-      this.logger.log(`Adding password protection to PDF: ${file.originalname}`);
-      
-      // Write input file
+      this.logger.log(`Adding password protection to PDF: ${file.originalname}`);// Write input file
+      tempInput, file.buffer);
+      // Write input fileInput}`);
       await fs.writeFile(tempInput, file.buffer);
-      this.logger.log(`Input file written: ${tempInput}`);
-
+      this.logger.log(`Input file written: ${tempInput}`);      // Use LibreOffice and qpdf for robust password protection
+'); // Escape special characters
       // Use LibreOffice and qpdf for robust password protection
-      const escapedPassword = password.replace(/["'\\$]/g, '\\$&'); // Escape special characters
+      const escapedPassword = password.replace(/["'\\$]/g, '\\$&'); // Escape special charactersthis.logger.log(`Attempting password protection with multiple methods`);
       
-      this.logger.log(`Attempting password protection with multiple methods`);
-      
+      this.logger.log(`Attempting password protection with multiple methods`);let success = false;
+      dout: string; stderr: string };
       let success = false;
-      let execResult: { stdout: string; stderr: string };
-      
-      try {
+      let execResult: { stdout: string; stderr: string };try {
+      Method 1: Use qpdf directly (most reliable for password protection)
+      try {sword}" 256 -- "${tempInput}" "${tempOutput}"`;
         // Method 1: Use qpdf directly (most reliable for password protection)
         const qpdfCommand = `qpdf --encrypt "${escapedPassword}" "${escapedPassword}" 256 -- "${tempInput}" "${tempOutput}"`;
-        this.logger.log(`Trying qpdf method: qpdf --encrypt [password] [password] 256 -- input output`);
+        this.logger.log(`Trying qpdf method: qpdf --encrypt [password] [password] 256 -- input output`);execResult = await this.execAsync(qpdfCommand, { timeout: 60000 });
         
-        execResult = await this.execAsync(qpdfCommand, { timeout: 60000 });
-        
+        execResult = await this.execAsync(qpdfCommand, { timeout: 60000 });// Check if output file was created
+        s(tempOutput).then(() => true).catch(() => false);
         // Check if output file was created
         const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
-        if (outputExists) {
+        if (outputExists) {(`Password protection successful with qpdf`);
           success = true;
-          this.logger.log(`Password protection successful with qpdf`);
-        }
+          this.logger.log(`Password protection successful with qpdf`);atch (qpdfError) {
+        }pdf method failed: ${qpdfError.message}`);
       } catch (qpdfError) {
-        this.logger.warn(`qpdf method failed: ${qpdfError.message}`);
-        
-        try {
+        this.logger.warn(`qpdf method failed: ${qpdfError.message}`);try {
+        Method 2: Use pdftk as fallback
+        try {pInput}" output "${tempOutput}" user_pw "${escapedPassword}" owner_pw "${escapedPassword}"`;
           // Method 2: Use pdftk as fallback
           const pdftkCommand = `pdftk "${tempInput}" output "${tempOutput}" user_pw "${escapedPassword}" owner_pw "${escapedPassword}"`;
-          this.logger.log(`Trying pdftk method`);
+          this.logger.log(`Trying pdftk method`);execResult = await this.execAsync(pdftkCommand, { timeout: 60000 });
           
-          execResult = await this.execAsync(pdftkCommand, { timeout: 60000 });
-          
+          execResult = await this.execAsync(pdftkCommand, { timeout: 60000 });// Check if output file was created
+          s(tempOutput).then(() => true).catch(() => false);
           // Check if output file was created
           const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
-          if (outputExists) {
+          if (outputExists) {(`Password protection successful with pdftk`);
             success = true;
-            this.logger.log(`Password protection successful with pdftk`);
-          }
+            this.logger.log(`Password protection successful with pdftk`);atch (pdftkError) {
+          }ftk method failed: ${pdftkError.message}`);
         } catch (pdftkError) {
-          this.logger.warn(`pdftk method failed: ${pdftkError.message}`);
+          this.logger.warn(`pdftk method failed: ${pdftkError.message}`);// Method 3: Try LibreOffice with Python helper script as last resort
           
           // Method 3: Try LibreOffice with Python helper script as last resort
           const scriptPath = `${tempDir}/protect_${timestamp}.py`;
           const pythonScript = `#!/usr/bin/env python3
 import subprocess
-import sys
+import sysutil
 import os
-import shutil
-
-def main():
-    input_file = "${tempInput}"
+import shutildef main():
+ile = "${tempInput}"
+def main():}"
+    input_file = "${tempInput}"}"
     output_file = "${tempOutput}"
-    password = "${escapedPassword}"
+    password = "${escapedPassword}"if not os.path.exists(input_file):
     
     if not os.path.exists(input_file):
         print("Input file not found")
-        sys.exit(1)
+        sys.exit(1)# Try different approaches
     
     # Try different approaches
-    methods = [
+    methods = [ --encrypt "{password}" "{password}" 256 -- "{input_file}" "{output_file}"',
         # qpdf
-        f'qpdf --encrypt "{password}" "{password}" 256 -- "{input_file}" "{output_file}"',
+        f'qpdf --encrypt "{password}" "{password}" 256 -- "{input_file}" "{output_file}"', "{input_file}" output "{output_file}" user_pw "{password}" owner_pw "{password}"',
         # pdftk
-        f'pdftk "{input_file}" output "{output_file}" user_pw "{password}" owner_pw "{password}"',
+        f'pdftk "{input_file}" output "{output_file}" user_pw "{password}" owner_pw "{password}"',ir} "{input_file}" && mv "${tempInput.replace('.pdf', '')}.pdf" "{output_file}"'
         # LibreOffice with basic export (limited password support)
         f'libreoffice --headless --convert-to pdf --outdir ${tempDir} "{input_file}" && mv "${tempInput.replace('.pdf', '')}.pdf" "{output_file}"'
-    ];
+    ];for i, cmd in enumerate(methods):
     
-    for i, cmd in enumerate(methods):
-        try:
+    for i, cmd in enumerate(methods):print(f"Trying method {i+1}: {cmd.split()[0]}")
+        try:e_output=True, text=True, timeout=60);
             print(f"Trying method {i+1}: {cmd.split()[0]}")
             result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60);
             if (result.returncode == 0 && os.path.exists(output_file)) {
                 print(f"Success with method {i+1}");
-                sys.exit(0);
+                sys.exit(0);t(f"Method {i+1} failed: {result.stderr}");
             } else {
-                print(f"Method {i+1} failed: {result.stderr}");
-            }
+                print(f"Method {i+1} failed: {result.stderr}");ch (Exception as e) {
+            }rror: {e}");
         } catch (Exception as e) {
             print(f"Method {i+1} error: {e}");
-        }
-    
+        }// Final fallback: just copy the file
+    nprotected copy");
     // Final fallback: just copy the file
     print("All methods failed, creating unprotected copy");
-    shutil.copy2(input_file, output_file);
+    shutil.copy2(input_file, output_file);if __name__ == "__main__":
 
 if __name__ == "__main__":
-    main()
-`;
+    main()        
+`;await fs.writeFile(scriptPath, pythonScript);
           
           await fs.writeFile(scriptPath, pythonScript);
-          await fs.chmod(scriptPath, 0o755);
-          
-          try {
+          await fs.chmod(scriptPath, 0o755);try {
+          st pythonCommand = `python3 "${scriptPath}"`;
+          try { { timeout: 90000 });
             const pythonCommand = `python3 "${scriptPath}"`;
-            execResult = await this.execAsync(pythonCommand, { timeout: 90000 });
-            
+            execResult = await this.execAsync(pythonCommand, { timeout: 90000 });// Check if output file was created
+            s(tempOutput).then(() => true).catch(() => false);
             // Check if output file was created
             const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
-            if (outputExists) {
+            if (outputExists) {(`Password protection completed with Python helper script`);
               success = true;
-              this.logger.log(`Password protection completed with Python helper script`);
-            }
-          } finally {
+              this.logger.log(`Password protection completed with Python helper script`);inally {
+            }up script
+          } finally {riptPath).catch(() => {});
             // Clean up script
             await fs.unlink(scriptPath).catch(() => {});
           }
         }
-      }
-      
+      }if (!success) {
+      or(`All password protection methods failed. Please ensure qpdf or pdftk is installed and the PDF is valid.`);
       if (!success) {
         throw new Error(`All password protection methods failed. Please ensure qpdf or pdftk is installed and the PDF is valid.`);
-      }
+      }const { stdout, stderr } = execResult || { stdout: '', stderr: '' };
       
-      const { stdout, stderr } = execResult || { stdout: '', stderr: '' };
-      
+      const { stdout, stderr } = execResult || { stdout: '', stderr: '' };if (stdout) {
+      .log(`Command output: ${stdout}`);
       if (stdout) {
         this.logger.log(`Command output: ${stdout}`);
-      }
-      
+      }if (stderr) {
+      .warn(`Command stderr: ${stderr}`);
       if (stderr) {
         this.logger.warn(`Command stderr: ${stderr}`);
-      }
-
+      }      // Verify output file was created and is valid
+t).then(() => true).catch(() => false);
       // Verify output file was created and is valid
-      const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);
-      if (!outputExists) {
+      const outputExists = await fs.access(tempOutput).then(() => true).catch(() => false);`Output file not found: ${tempOutput}`);
+      if (!outputExists) {not created');
         this.logger.error(`Output file not found: ${tempOutput}`);
         throw new Error('Password protection failed - output file not created');
-      }
-
-      // Read the output file
+      }      // Read the output file
+ait fs.readFile(tempOutput);
+      // Read the output filecessfully, size: ${outputBuffer.length} bytes`);
       const outputBuffer = await fs.readFile(tempOutput);
-      this.logger.log(`Password-protected PDF created successfully, size: ${outputBuffer.length} bytes`);
+      this.logger.log(`Password-protected PDF created successfully, size: ${outputBuffer.length} bytes`);// Verify the output is a valid PDF with password protection
       
-      // Verify the output is a valid PDF with password protection
+      // Verify the output is a valid PDF with password protectionsword-protected PDF is empty');
       if (outputBuffer.length === 0) {
         throw new Error('Generated password-protected PDF is empty');
-      }
-
+      }      // Check PDF header
+utputBuffer.subarray(0, 5).toString();
       // Check PDF header
-      const pdfHeader = outputBuffer.subarray(0, 5).toString();
+      const pdfHeader = outputBuffer.subarray(0, 5).toString(); not a valid PDF');
       if (!pdfHeader.startsWith('%PDF')) {
         throw new Error('Generated file is not a valid PDF');
-      }
+      }return outputBuffer;
       
-      return outputBuffer;
+      return outputBuffer;or(`PDF password protection error: ${error.message}`);
     } catch (error) {
-      this.logger.error(`PDF password protection error: ${error.message}`);
-      
+      this.logger.error(`PDF password protection error: ${error.message}`);if (error.message.includes('timeout')) {
+      on timed out. Please try with a smaller PDF.');
       if (error.message.includes('timeout')) {
         throw new Error('PDF password protection timed out. Please try with a smaller PDF.');
-      }
+      }if (error.message.includes('command not found') || error.message.includes('libreoffice')) {
       
       if (error.message.includes('command not found') || error.message.includes('libreoffice')) {
         throw new Error('LibreOffice is not installed or not accessible');
-      }
+      }throw new Error(`Failed to add password protection to PDF: ${error.message}`);
       
-      throw new Error(`Failed to add password protection to PDF: ${error.message}`);
+      throw new Error(`Failed to add password protection to PDF: ${error.message}`);up temporary files
     } finally {
-      // Clean up temporary files
-      try {
-        this.logger.log(`Cleaning up temporary files`);
+      // Clean up temporary filess.logger.log(`Cleaning up temporary files`);
+      try {logger.error(`Failed to delete input file: ${err.message}`));
+        this.logger.log(`Cleaning up temporary files`););
         await fs.unlink(tempInput).catch((err) => this.logger.error(`Failed to delete input file: ${err.message}`));
-        await fs.unlink(tempOutput).catch((err) => this.logger.error(`Failed to delete output file: ${err.message}`));
+        await fs.unlink(tempOutput).catch((err) => this.logger.error(`Failed to delete output file: ${err.message}`));anup error: ${cleanupError.message}`);
       } catch (cleanupError) {
         this.logger.error(`Cleanup error: ${cleanupError.message}`);
       }
     }
-  }
-
+  }  // ConvertAPI-related methods (DEPRECATED - now using Enhanced ONLYOFFICE)
+, healthy?: boolean}> {
   // ConvertAPI-related methods (DEPRECATED - now using Enhanced ONLYOFFICE)
   async getConvertApiStatus(): Promise<{available: boolean, balance?: number, healthy?: boolean}> {
-    // ConvertAPI has been replaced with Enhanced ONLYOFFICE Service
+    // ConvertAPI has been replaced with Enhanced ONLYOFFICE Servicele: false,
     return { 
       available: false,
       balance: null,
       healthy: false
     };
-  }
-
+  }  // ONLYOFFICE-related methods
+Promise<{available: boolean, healthy?: boolean, serverInfo?: any}> {
   // ONLYOFFICE-related methods
   async getOnlyOfficeStatus(): Promise<{available: boolean, healthy?: boolean, serverInfo?: any}> {
     if (!this.onlyOfficeService.isAvailable()) {
       return { available: false };
-    }
-
+    }    try {
+st [healthy, serverInfo] = await Promise.all([
     try {
-      const [healthy, serverInfo] = await Promise.all([
+      const [healthy, serverInfo] = await Promise.all([)
         this.onlyOfficeService.healthCheck(),
         this.onlyOfficeService.getServerInfo()
-      ]);
-
+      ]);      return {
+ble: true,
       return {
-        available: true,
+        available: true,fo
         healthy,
-        serverInfo
-      };
+        serverInfotch (error) {
+      };or(`Failed to get ONLYOFFICE status: ${error.message}`);
     } catch (error) {
-      this.logger.error(`Failed to get ONLYOFFICE status: ${error.message}`);
+      this.logger.error(`Failed to get ONLYOFFICE status: ${error.message}`);ble: true,
       return {
         available: true,
         healthy: false
       };
     }
-  }
-
+  }  // Enhanced ONLYOFFICE-related methods
+romise<{available: boolean, healthy?: boolean, serverInfo?: any, capabilities?: any}> {
   // Enhanced ONLYOFFICE-related methods
-  async getEnhancedOnlyOfficeStatus(): Promise<{available: boolean, healthy?: boolean, serverInfo?: any, capabilities?: any}> {
+  async getEnhancedOnlyOfficeStatus(): Promise<{available: boolean, healthy?: boolean, serverInfo?: any, capabilities?: any}> {st [healthy, serverInfo] = await Promise.all([
     try {
-      const [healthy, serverInfo] = await Promise.all([
+      const [healthy, serverInfo] = await Promise.all([)
         this.onlyOfficeEnhancedService.healthCheck(),
         this.onlyOfficeEnhancedService.getServerInfo()
-      ]);
-
+      ]);      return {
+ble: true,
       return {
-        available: true,
-        healthy,
-        serverInfo,
+        available: true,fo,
+        healthy,s: {
+        serverInfo,ver: serverInfo.onlyofficeServer.available,
         capabilities: {
-          onlyofficeServer: serverInfo.onlyofficeServer.available,
+          onlyofficeServer: serverInfo.onlyofficeServer.available,available,
           python: serverInfo.python.available,
-          libreoffice: serverInfo.libreoffice.available,
+          libreoffice: serverInfo.libreoffice.available,', 'pptx']
           multipleConversionMethods: true,
           supportedFormats: ['docx', 'xlsx', 'pptx']
-        }
-      };
+        }tch (error) {
+      };or(`Failed to get Enhanced ONLYOFFICE status: ${error.message}`);
     } catch (error) {
-      this.logger.error(`Failed to get Enhanced ONLYOFFICE status: ${error.message}`);
+      this.logger.error(`Failed to get Enhanced ONLYOFFICE status: ${error.message}`);ble: false,
       return {
         available: false,
         healthy: false
       };
-    }
-  }
+    }  }
 }
