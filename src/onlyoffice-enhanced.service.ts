@@ -825,20 +825,24 @@ def premium_convert_to_xlsx(input_path, output_path):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """Enhanced PDF to PPTX conversion with text extraction and smart layout"""
-    print(f"🚀 Starting ENHANCED PDF to PPTX conversion...")
+    """PREMIUM PDF to PPTX conversion with intelligent layout, design, and multimedia support"""
+    print(f"🚀 Starting PREMIUM PDF to PPTX conversion with advanced features...")
     
-    # Method 1: Advanced text and layout extraction with formatted slides
+    # Method 1: Professional-grade conversion with smart design and layout
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
         from pptx.util import Inches, Pt
-        from pptx.enum.text import WD_ALIGN_PARAGRAPH
+        from pptx.enum.text import PP_ALIGN, WD_ALIGN_PARAGRAPH
         from pptx.dml.color import RGBColor
+        from pptx.enum.shapes import MSO_SHAPE
+        from pptx.enum.dml import MSO_THEME_COLOR
         import io
         import re
+        import tempfile
+        from PIL import Image
         
-        print("🎨 Using Enhanced PyMuPDF + python-pptx (Smart Layout Method)...")
+        print("🎨 Using PREMIUM PyMuPDF + python-pptx (Professional Design Method)...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
@@ -847,31 +851,49 @@ def premium_convert_to_pptx(input_path, output_path):
         prs.slide_width = Inches(13.33)
         prs.slide_height = Inches(7.5)
         
+        # Create title slide
+        title_slide_layout = prs.slide_layouts[0]  # Title Slide
+        title_slide = prs.slides.add_slide(title_slide_layout)
+        
+        # Extract document title from first page
+        first_page = pdf_doc.load_page(0)
+        first_page_text = first_page.get_text()
+        first_lines = [line.strip() for line in first_page_text.split('\\n') if line.strip()]
+        
+        if first_lines:
+            title_slide.shapes.title.text = first_lines[0][:100]  # Limit title length
+            if len(first_lines) > 1:
+                subtitle_text = ' '.join(first_lines[1:3])[:150]  # Combine next lines as subtitle
+                if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
+                    title_slide.placeholders[1].text = subtitle_text
+        else:
+            title_slide.shapes.title.text = "Converted from PDF"
+            if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
+                title_slide.placeholders[1].text = f"Total Pages: {len(pdf_doc)}"
+        
+        # Process each page with intelligent content detection
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            # Extract text blocks with detailed formatting information
-            blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
+            # Advanced content analysis
+            text_dict = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)
+            blocks = text_dict.get("blocks", [])
             
-            # Create slide with title and content layout
-            slide_layout = prs.slide_layouts[1]  # Title and Content layout
-            slide = prs.slides.add_slide(slide_layout)
+            # Extract images from page
+            image_list = page.get_images()
             
-            # Initialize slide components
-            title_box = slide.shapes.title
-            content_box = slide.placeholders[1]
-            
-            # Extract and organize content
-            title_text = ""
-            content_lines = []
-            large_text_items = []
-            regular_text_items = []
+            # Analyze page layout and content type
+            has_significant_text = False
+            has_images = len(image_list) > 0
+            text_blocks = []
+            heading_candidates = []
             
             for block in blocks:
                 if 'lines' in block:
                     block_text = ""
                     max_font_size = 0
-                    block_color = None
+                    min_font_size = float('inf')
+                    block_bbox = block.get('bbox', [0, 0, 0, 0])
                     
                     for line in block["lines"]:
                         line_text = ""
@@ -881,120 +903,239 @@ def premium_convert_to_pptx(input_path, output_path):
                                 line_text += text + " "
                                 font_size = span.get('size', 12)
                                 max_font_size = max(max_font_size, font_size)
-                                
-                                # Extract color information
-                                if 'color' in span and not block_color:
-                                    color_int = span['color']
-                                    block_color = {
-                                        'r': (color_int >> 16) & 255,
-                                        'g': (color_int >> 8) & 255,
-                                        'b': color_int & 255
-                                    }
+                                min_font_size = min(min_font_size, font_size)
                         
                         if line_text.strip():
                             block_text += line_text.strip() + "\\n"
                     
-                    if block_text.strip():
-                        text_item = {
+                    if block_text.strip() and len(block_text.strip()) > 5:
+                        has_significant_text = True
+                        text_block = {
                             'text': block_text.strip(),
-                            'font_size': max_font_size,
-                            'color': block_color,
-                            'bbox': block.get('bbox', [0, 0, 0, 0])
+                            'max_font_size': max_font_size,
+                            'min_font_size': min_font_size if min_font_size != float('inf') else max_font_size,
+                            'bbox': block_bbox,
+                            'y_position': block_bbox[1] if len(block_bbox) > 1 else 0
                         }
                         
-                        # Categorize text by size and position
-                        if max_font_size >= 16:  # Title-like text
-                            large_text_items.append(text_item)
-                        else:  # Regular content
-                            regular_text_items.append(text_item)
+                        text_blocks.append(text_block)
+                        
+                        # Identify potential headings
+                        if max_font_size >= 14 and len(block_text.strip()) < 100:
+                            heading_candidates.append(text_block)
             
-            # Set slide title from largest/first significant text
-            if large_text_items:
-                # Use the largest text or text at the top as title
-                title_item = max(large_text_items, key=lambda x: x['font_size'])
-                title_text = title_item['text'].split('\\n')[0]  # First line only
-                title_box.text = title_text
+            # Sort text blocks by vertical position (top to bottom)
+            text_blocks.sort(key=lambda x: x['y_position'])
+            heading_candidates.sort(key=lambda x: (-x['max_font_size'], x['y_position']))
+            
+            # Determine best slide layout based on content
+            if has_images and has_significant_text:
+                # Mixed content - use picture with caption or side-by-side layout
+                slide_layout = prs.slide_layouts[8] if len(prs.slide_layouts) > 8 else prs.slide_layouts[6]  # Picture with Caption or Blank
+            elif has_images and not has_significant_text:
+                # Image-heavy content
+                slide_layout = prs.slide_layouts[6]  # Blank layout for custom image placement
+            elif text_blocks and heading_candidates:
+                # Text with clear hierarchy
+                slide_layout = prs.slide_layouts[1]  # Title and Content
+            else:
+                # Fallback layout
+                slide_layout = prs.slide_layouts[5] if len(prs.slide_layouts) > 5 else prs.slide_layouts[1]  # Title Only or Title and Content
+            
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Handle content based on layout choice
+            if has_significant_text:
+                # Extract title from heading candidates or first text block
+                slide_title = ""
+                content_blocks = text_blocks[:]
                 
-                # Format title
-                if title_box.text_frame.paragraphs:
-                    title_para = title_box.text_frame.paragraphs[0]
-                    title_para.font.size = Pt(min(title_item['font_size'] + 4, 28))
+                if heading_candidates:
+                    best_heading = heading_candidates[0]
+                    slide_title = best_heading['text'].split('\\n')[0][:80]  # First line, limited length
+                    # Remove heading from content blocks
+                    content_blocks = [block for block in text_blocks if block != best_heading]
+                elif text_blocks:
+                    slide_title = text_blocks[0]['text'].split('\\n')[0][:80]
+                    content_blocks = text_blocks[1:] if len(text_blocks) > 1 else []
+                
+                # Set slide title
+                if slide.shapes.title and slide_title:
+                    slide.shapes.title.text = slide_title
+                    
+                    # Enhanced title formatting
+                    title_frame = slide.shapes.title.text_frame
+                    title_para = title_frame.paragraphs[0]
+                    title_para.font.size = Pt(24)
                     title_para.font.bold = True
-                    if title_item['color']:
-                        title_para.font.color.rgb = RGBColor(
-                            title_item['color']['r'],
-                            title_item['color']['g'],
-                            title_item['color']['b']
-                        )
+                    title_para.font.color.theme_color = MSO_THEME_COLOR.ACCENT_1
+                
+                # Add content to appropriate placeholder or create custom text box
+                if content_blocks:
+                    content_text = ""
+                    for block in content_blocks[:5]:  # Limit to 5 content blocks per slide
+                        content_text += block['text'] + "\\n\\n"
+                    
+                    if len(slide.placeholders) > 1 and not has_images:
+                        # Use content placeholder
+                        content_placeholder = slide.placeholders[1]
+                        content_frame = content_placeholder.text_frame
+                        content_frame.clear()
+                        
+                        # Smart content formatting
+                        lines = content_text.strip().split('\\n')
+                        lines = [line.strip() for line in lines if line.strip()]
+                        
+                        for i, line in enumerate(lines[:15]):  # Limit lines per slide
+                            if i > 0:
+                                content_frame.add_paragraph()
+                            
+                            para = content_frame.paragraphs[i] if i < len(content_frame.paragraphs) else content_frame.add_paragraph()
+                            para.text = line
+                            para.font.size = Pt(14)
+                            para.space_after = Pt(6)
+                            
+                            # Apply bullet points for list-like content
+                            if line.startswith(('•', '-', '*', '○')) or (len(line) < 100 and not line.endswith('.')):
+                                para.level = 0
+                    else:
+                        # Create custom text box for mixed content
+                        left = Inches(0.5)
+                        top = Inches(1.5)
+                        width = Inches(6)
+                        height = Inches(5)
+                        
+                        if has_images:
+                            # Adjust text box size for image content
+                            width = Inches(5)
+                            
+                        text_box = slide.shapes.add_textbox(left, top, width, height)
+                        text_frame = text_box.text_frame
+                        text_frame.text = content_text.strip()
+                        
+                        for para in text_frame.paragraphs:
+                            para.font.size = Pt(12)
+                            para.space_after = Pt(4)
             
-            # Add content to slide
-            if regular_text_items or large_text_items:
-                content_text_frame = content_box.text_frame
-                content_text_frame.clear()
+            # Handle images with professional placement
+            if has_images:
+                print(f"📸 Processing {len(image_list)} images on page {page_num + 1}")
                 
-                # Add content from regular text items
-                all_content_items = regular_text_items + [item for item in large_text_items if item['text'] != title_text]
-                
-                for i, item in enumerate(all_content_items):
-                    if i > 0:
-                        content_text_frame.add_paragraph()
-                    
-                    para = content_text_frame.paragraphs[i] if i < len(content_text_frame.paragraphs) else content_text_frame.add_paragraph()
-                    para.text = item['text']
-                    para.font.size = Pt(min(max(item['font_size'], 10), 18))
-                    
-                    # Apply color if available
-                    if item['color']:
-                        para.font.color.rgb = RGBColor(
-                            item['color']['r'],
-                            item['color']['g'],
-                            item['color']['b']
-                        )
-                    
-                    # Add some spacing
-                    para.space_after = Pt(6)
+                for img_index, img in enumerate(image_list[:3]):  # Limit to 3 images per slide
+                    try:
+                        # Extract image
+                        xref = img[0]
+                        pix = fitz.Pixmap(pdf_doc, xref)
+                        
+                        if pix.n - pix.alpha < 4:  # Ensure it's not CMYK
+                            # Convert to PNG
+                            img_data = pix.tobytes("png")
+                            image_stream = io.BytesIO(img_data)
+                            
+                            # Calculate optimal image placement
+                            if has_significant_text:
+                                # Side-by-side with text
+                                left = Inches(7)
+                                top = Inches(1.5)
+                                max_width = Inches(5.5)
+                                max_height = Inches(5)
+                            else:
+                                # Full slide image
+                                left = Inches(1)
+                                top = Inches(1)
+                                max_width = Inches(11)
+                                max_height = Inches(6)
+                            
+                            # Maintain aspect ratio
+                            img_width = pix.width
+                            img_height = pix.height
+                            aspect_ratio = img_width / img_height
+                            
+                            if aspect_ratio > (max_width / max_height):
+                                # Fit to width
+                                width = max_width
+                                height = max_width / aspect_ratio
+                            else:
+                                # Fit to height
+                                height = max_height
+                                width = max_height * aspect_ratio
+                            
+                            # Add image to slide
+                            slide.shapes.add_picture(
+                                image_stream,
+                                left + (Inches(0.5) * img_index),  # Slight offset for multiple images
+                                top + (Inches(0.5) * img_index),
+                                width,
+                                height
+                            )
+                            
+                        pix = None  # Clean up
+                        
+                    except Exception as img_error:
+                        print(f"⚠️ Could not process image {img_index + 1}: {img_error}")
+                        continue
             
-            # If no text was extracted, fall back to high-quality image
-            if not title_text and not regular_text_items:
-                print(f"📄 No text found on page {page_num + 1}, using high-quality image...")
+            # If no meaningful content was extracted, create high-quality page image
+            if not has_significant_text and not has_images:
+                print(f"📄 Creating high-quality slide image for page {page_num + 1}")
                 
-                # Remove title and content placeholders
                 slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
                 
-                # Render page as very high-quality image
-                mat = fitz.Matrix(3.0, 3.0)  # 3x scaling for excellent quality
+                # Render page at very high resolution
+                mat = fitz.Matrix(3.5, 3.5)  # 3.5x scaling for premium quality
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 img_data = pix.tobytes("png")
-                
-                # Add image to slide with proper scaling
                 image_stream = io.BytesIO(img_data)
                 
-                # Calculate proper image dimensions while maintaining aspect ratio
+                # Add full-slide image with proper scaling
                 page_rect = page.rect
                 aspect_ratio = page_rect.width / page_rect.height
-                slide_aspect = prs.slide_width / prs.slide_height
+                slide_aspect = float(prs.slide_width) / float(prs.slide_height)
                 
-                if aspect_ratio > slide_aspect:
-                    # Image is wider, fit to width
-                    img_width = prs.slide_width
-                    img_height = int(prs.slide_width / aspect_ratio)
-                    left = 0
-                    top = (prs.slide_height - img_height) // 2
+                margin = Inches(0.5)
+                available_width = prs.slide_width - (2 * margin)
+                available_height = prs.slide_height - (2 * margin)
+                
+                if aspect_ratio > (available_width / available_height):
+                    # Fit to width
+                    img_width = available_width
+                    img_height = available_width / aspect_ratio
+                    left = margin
+                    top = margin + (available_height - img_height) / 2
                 else:
-                    # Image is taller, fit to height
-                    img_height = prs.slide_height
-                    img_width = int(prs.slide_height * aspect_ratio)
-                    left = (prs.slide_width - img_width) // 2
-                    top = 0
+                    # Fit to height
+                    img_height = available_height
+                    img_width = available_height * aspect_ratio
+                    left = margin + (available_width - img_width) / 2
+                    top = margin
                 
                 slide.shapes.add_picture(
-                    image_stream, 
-                    left, top, 
-                    width=img_width, 
-                    height=img_height
+                    image_stream,
+                    int(left), int(top),
+                    int(img_width), int(img_height)
                 )
             
-            print(f"📄 Enhanced slide {page_num + 1}/{len(pdf_doc)} completed")
+            print(f"✅ Premium slide {page_num + 1}/{len(pdf_doc)} completed")
+        
+        # Add professional footer to all slides
+        for slide_idx, slide in enumerate(prs.slides):
+            if slide_idx > 0:  # Skip title slide
+                try:
+                    # Add slide number
+                    left = prs.slide_width - Inches(1)
+                    top = prs.slide_height - Inches(0.5)
+                    width = Inches(0.8)
+                    height = Inches(0.3)
+                    
+                    footer_box = slide.shapes.add_textbox(left, top, width, height)
+                    footer_frame = footer_box.text_frame
+                    footer_frame.text = f"{slide_idx}/{len(prs.slides) - 1}"
+                    footer_para = footer_frame.paragraphs[0]
+                    footer_para.font.size = Pt(10)
+                    footer_para.font.color.rgb = RGBColor(128, 128, 128)
+                    footer_para.alignment = PP_ALIGN.RIGHT
+                except:
+                    pass  # Skip footer if placement fails
         
         prs.save(output_path)
         pdf_doc.close()
@@ -1190,94 +1331,255 @@ def basic_convert_to_xlsx(input_path, output_path):
     return False
 
 def basic_convert_to_pptx(input_path, output_path):
-    """Enhanced basic PDF to PPTX conversion with text extraction"""
+    """ENHANCED basic PDF to PPTX conversion with professional design and layout"""
     try:
         import fitz
         from pptx import Presentation
         from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN
+        from pptx.dml.color import RGBColor
+        from pptx.enum.dml import MSO_THEME_COLOR
         import io
         
-        print("🎨 Enhanced Basic PPTX Conversion...")
+        print("🎨 Enhanced Professional PPTX Conversion...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
         
-        # Set standard widescreen dimensions
+        # Set professional widescreen dimensions
         prs.slide_width = Inches(13.33)
         prs.slide_height = Inches(7.5)
+        
+        # Create title slide from first page
+        if len(pdf_doc) > 0:
+            first_page = pdf_doc.load_page(0)
+            first_text = first_page.get_text()
+            first_lines = [line.strip() for line in first_text.split('\\n') if line.strip()]
+            
+            title_slide_layout = prs.slide_layouts[0]  # Title Slide
+            title_slide = prs.slides.add_slide(title_slide_layout)
+            
+            if first_lines:
+                title_slide.shapes.title.text = first_lines[0][:100]
+                if len(first_lines) > 1 and len(title_slide.placeholders) > 1:
+                    subtitle = ' '.join(first_lines[1:3])[:150]
+                    title_slide.placeholders[1].text = subtitle
+            else:
+                title_slide.shapes.title.text = "Converted from PDF"
+                if len(title_slide.placeholders) > 1:
+                    title_slide.placeholders[1].text = f"Total Pages: {len(pdf_doc)}"
         
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            # Try to extract text first
-            text = page.get_text()
-            text_lines = [line.strip() for line in text.split('\\n') if line.strip()]
+            # Advanced text extraction with formatting preservation
+            text_dict = page.get_text("dict")
+            blocks = text_dict.get("blocks", [])
             
-            if text_lines and len(' '.join(text_lines)) > 50:  # Meaningful text content
-                # Create slide with title and content layout
+            # Extract images
+            image_list = page.get_images()
+            
+            # Analyze content structure
+            text_content = []
+            for block in blocks:
+                if 'lines' in block:
+                    block_text = ""
+                    for line in block["lines"]:
+                        line_text = ""
+                        for span in line["spans"]:
+                            if span['text'].strip():
+                                line_text += span['text'] + " "
+                        if line_text.strip():
+                            block_text += line_text.strip() + "\\n"
+                    if block_text.strip():
+                        text_content.append(block_text.strip())
+            
+            # Determine slide layout based on content
+            has_images = len(image_list) > 0
+            has_text = len(text_content) > 0 and sum(len(t) for t in text_content) > 50
+            
+            if has_text and has_images:
+                # Mixed content layout
+                slide_layout = prs.slide_layouts[8] if len(prs.slide_layouts) > 8 else prs.slide_layouts[1]
+            elif has_text:
+                # Text-focused layout
                 slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
+            else:
+                # Image-focused layout
+                slide_layout = prs.slide_layouts[6]  # Blank
+            
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Handle text content with smart formatting
+            if has_text:
+                # Extract title from first significant text
+                title_text = text_content[0].split('\\n')[0] if text_content else f"Page {page_num + 1}"
+                if len(title_text) > 80:
+                    title_text = title_text[:80] + "..."
                 
-                # Set title from first line
-                title = text_lines[0]
-                if len(title) > 60:  # Truncate long titles
-                    title = title[:60] + "..."
-                slide.shapes.title.text = title
-                
-                # Add content
-                if len(text_lines) > 1:
-                    content_box = slide.placeholders[1]
-                    text_frame = content_box.text_frame
-                    text_frame.clear()
+                if slide.shapes.title:
+                    slide.shapes.title.text = title_text
                     
-                    # Add up to 10 lines of content
-                    content_lines = text_lines[1:11]  # Limit content
-                    for i, line in enumerate(content_lines):
+                    # Professional title formatting
+                    title_frame = slide.shapes.title.text_frame
+                    if title_frame.paragraphs:
+                        title_para = title_frame.paragraphs[0]
+                        title_para.font.size = Pt(24)
+                        title_para.font.bold = True
+                        title_para.font.color.theme_color = MSO_THEME_COLOR.ACCENT_1
+                
+                # Add content with smart organization
+                content_text = ""
+                for text_block in text_content:
+                    if text_block != title_text:
+                        content_text += text_block + "\\n\\n"
+                
+                if content_text.strip() and len(slide.placeholders) > 1 and not has_images:
+                    # Use content placeholder for text-only slides
+                    content_placeholder = slide.placeholders[1]
+                    content_frame = content_placeholder.text_frame
+                    content_frame.clear()
+                    
+                    # Smart line processing
+                    lines = [line.strip() for line in content_text.split('\\n') if line.strip()]
+                    
+                    # Limit content and apply smart formatting
+                    for i, line in enumerate(lines[:12]):  # Max 12 lines per slide
                         if i > 0:
-                            text_frame.add_paragraph()
-                        para = text_frame.paragraphs[i] if i < len(text_frame.paragraphs) else text_frame.add_paragraph()
+                            content_frame.add_paragraph()
+                        
+                        para = content_frame.paragraphs[i] if i < len(content_frame.paragraphs) else content_frame.add_paragraph()
                         para.text = line
                         para.font.size = Pt(14)
                         para.space_after = Pt(6)
+                        
+                        # Apply bullet formatting for list-like items
+                        if (line.startswith(('•', '-', '*', '○', '►')) or 
+                            (len(line) < 80 and not line.endswith('.') and ':' not in line)):
+                            para.level = 0
+                            
+                elif content_text.strip() and has_images:
+                    # Create text box for mixed content slides
+                    left = Inches(0.5)
+                    top = Inches(1.8)
+                    width = Inches(5.5)
+                    height = Inches(4.5)
+                    
+                    text_box = slide.shapes.add_textbox(left, top, width, height)
+                    text_frame = text_box.text_frame
+                    text_frame.text = content_text.strip()[:500]  # Limit text length
+                    
+                    # Format text box content
+                    for para in text_frame.paragraphs:
+                        para.font.size = Pt(12)
+                        para.space_after = Pt(4)
+            
+            # Handle images with professional placement
+            if has_images:
+                print(f"� Adding {len(image_list)} images to slide {page_num + 1}")
                 
-                print(f"📄 Text slide {page_num + 1} created with {len(text_lines)} lines")
-            else:
-                # No meaningful text, use high-quality image
-                slide_layout = prs.slide_layouts[6]  # Blank layout
-                slide = prs.slides.add_slide(slide_layout)
+                for img_index, img in enumerate(image_list[:2]):  # Max 2 images per slide
+                    try:
+                        xref = img[0]
+                        pix = fitz.Pixmap(pdf_doc, xref)
+                        
+                        if pix.n - pix.alpha < 4:  # Valid image format
+                            img_data = pix.tobytes("png")
+                            image_stream = io.BytesIO(img_data)
+                            
+                            # Smart image placement
+                            if has_text:
+                                # Side placement with text
+                                left = Inches(7 + img_index * 0.5)
+                                top = Inches(1.5 + img_index * 0.3)
+                                max_width = Inches(5)
+                                max_height = Inches(4.5)
+                            else:
+                                # Center placement for image-only slides
+                                left = Inches(1.5 + img_index * 0.5)
+                                top = Inches(1 + img_index * 0.3)
+                                max_width = Inches(10)
+                                max_height = Inches(6)
+                            
+                            # Maintain aspect ratio
+                            aspect_ratio = pix.width / pix.height
+                            if aspect_ratio > (max_width / max_height):
+                                width = max_width
+                                height = max_width / aspect_ratio
+                            else:
+                                height = max_height
+                                width = max_height * aspect_ratio
+                            
+                            slide.shapes.add_picture(image_stream, left, top, width, height)
+                            
+                        pix = None
+                        
+                    except Exception as img_error:
+                        print(f"⚠️ Image processing error: {img_error}")
+                        continue
+            
+            # Fallback to high-quality page image if no content extracted
+            if not has_text and not has_images:
+                print(f"📄 Using premium page image for slide {page_num + 1}")
                 
-                # Render as high-quality image
-                mat = fitz.Matrix(2.5, 2.5)  # High resolution
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+                
+                # Ultra-high quality rendering
+                mat = fitz.Matrix(4.0, 4.0)  # 4x scaling for premium quality
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 img_data = pix.tobytes("png")
                 image_stream = io.BytesIO(img_data)
                 
-                # Add image with proper scaling
+                # Professional image placement with margins
+                margin = Inches(0.5)
                 page_rect = page.rect
                 aspect_ratio = page_rect.width / page_rect.height
-                slide_aspect = float(prs.slide_width) / float(prs.slide_height)
+                
+                available_width = prs.slide_width - (2 * margin)
+                available_height = prs.slide_height - (2 * margin)
+                slide_aspect = available_width / available_height
                 
                 if aspect_ratio > slide_aspect:
-                    # Fit to width
-                    img_width = prs.slide_width
-                    img_height = int(prs.slide_width / aspect_ratio)
-                    left = 0
-                    top = (prs.slide_height - img_height) // 2
+                    img_width = available_width
+                    img_height = available_width / aspect_ratio
+                    left = margin
+                    top = margin + (available_height - img_height) / 2
                 else:
-                    # Fit to height
-                    img_height = prs.slide_height
-                    img_width = int(prs.slide_height * aspect_ratio)
-                    left = (prs.slide_width - img_width) // 2
-                    top = 0
+                    img_height = available_height
+                    img_width = available_height * aspect_ratio
+                    left = margin + (available_width - img_width) / 2
+                    top = margin
                 
                 slide.shapes.add_picture(image_stream, left, top, img_width, img_height)
-                print(f"📄 Image slide {page_num + 1} created")
+            
+            print(f"✅ Professional slide {page_num + 1}/{len(pdf_doc)} completed")
+        
+        # Add professional slide numbers
+        for slide_idx, slide in enumerate(prs.slides):
+            if slide_idx > 0:  # Skip title slide
+                try:
+                    # Add slide number footer
+                    left = prs.slide_width - Inches(1.2)
+                    top = prs.slide_height - Inches(0.6)
+                    width = Inches(1)
+                    height = Inches(0.4)
+                    
+                    number_box = slide.shapes.add_textbox(left, top, width, height)
+                    number_frame = number_box.text_frame
+                    number_frame.text = f"{slide_idx}"
+                    
+                    number_para = number_frame.paragraphs[0]
+                    number_para.font.size = Pt(10)
+                    number_para.font.color.rgb = RGBColor(100, 100, 100)
+                    number_para.alignment = PP_ALIGN.CENTER
+                except:
+                    pass  # Skip if footer placement fails
         
         prs.save(output_path)
         pdf_doc.close()
         
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
-            print(f"✅ Enhanced Basic PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+            print(f"✅ Enhanced Professional PPTX conversion successful: {os.path.getsize(output_path)} bytes")
             return True
         
     except ImportError:
