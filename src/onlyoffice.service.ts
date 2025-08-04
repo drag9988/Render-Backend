@@ -199,42 +199,56 @@ export class OnlyOfficeService {
     const { promisify } = require('util');
     const execAsync = promisify(exec);
 
-    // Enhanced LibreOffice commands optimized for better PDF conversion
-    const commands = [
-      // Method 1: Enhanced conversion with specific filters and options
-      `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to ${targetFormat} --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 2: Writer-specific conversion for better text extraction
-      `libreoffice --headless --writer --invisible --convert-to ${targetFormat}:"writer8" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 3: Draw conversion for complex layouts
-      `libreoffice --headless --draw --invisible --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 4: Standard conversion with enhanced options
-      `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-    ];
+    // Enhanced commands for better PDF to PowerPoint conversion
+    const enhancedCommands = [];
+    
+    if (targetFormat === 'pptx') {
+      enhancedCommands.push(
+        // Method 1: Use Impress directly for PowerPoint conversion
+        `libreoffice --headless --impress --convert-to pptx:"Impress MS PowerPoint 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 2: Draw import with PowerPoint export
+        `libreoffice --headless --draw --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 3: Writer import then PowerPoint export (for text-heavy PDFs)
+        `libreoffice --headless --writer --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 4: Standard PowerPoint conversion
+        `libreoffice --headless --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+      );
+    } else {
+      enhancedCommands.push(
+        // Enhanced conversion for other formats
+        `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Alternative methods based on target format
+        targetFormat === 'docx' 
+          ? `libreoffice --headless --writer --convert-to ${targetFormat}:"MS Word 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+          : `libreoffice --headless --calc --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+      );
+    }
 
     let lastError = '';
     
-    for (let i = 0; i < commands.length; i++) {
-      const command = commands[i];
-      this.logger.log(`Enhanced LibreOffice attempt ${i + 1}: ${command}`);
+    for (let i = 0; i < enhancedCommands.length; i++) {
+      const command = enhancedCommands[i];
+      this.logger.log(`Attempting enhanced LibreOffice conversion ${i + 1}/${enhancedCommands.length} for ${targetFormat}`);
       
       try {
         const { stdout, stderr } = await execAsync(command, { 
-          timeout: this.timeout,
-          maxBuffer: 1024 * 1024 * 10 // 10MB buffer
+          timeout: this.timeout - 10000, // Leave some buffer time
+          maxBuffer: 1024 * 1024 * 10 // 10MB
         });
         
         if (stdout) {
-          this.logger.log(`LibreOffice output (attempt ${i + 1}): ${stdout}`);
+          this.logger.log(`LibreOffice output: ${stdout}`);
         }
         
         if (stderr && !stderr.includes('Warning')) {
-          this.logger.warn(`LibreOffice stderr (attempt ${i + 1}): ${stderr}`);
+          this.logger.warn(`LibreOffice stderr: ${stderr}`);
         }
 
-        // Check if output file exists
+        // Check for output file
         const expectedOutputPath = path.join(
           path.dirname(outputPath), 
           path.basename(inputPath, '.pdf') + '.' + targetFormat
@@ -244,24 +258,25 @@ export class OnlyOfficeService {
           await fs.access(expectedOutputPath);
           const result = await fs.readFile(expectedOutputPath);
           
-          if (result.length > 100) { // Valid file size
-            this.logger.log(`Successful conversion on attempt ${i + 1}, file size: ${result.length} bytes`);
+          if (result.length > 500) { // Reasonable minimum size
+            this.logger.log(`Enhanced LibreOffice conversion successful: ${result.length} bytes`);
+            await fs.unlink(expectedOutputPath).catch(() => {});
             return result;
           } else {
             throw new Error(`Generated file too small: ${result.length} bytes`);
           }
         } catch (fileError) {
-          this.logger.warn(`Output file check failed on attempt ${i + 1}: ${fileError.message}`);
+          this.logger.warn(`Output file check failed: ${fileError.message}`);
           lastError = fileError.message;
         }
         
       } catch (execError) {
-        this.logger.warn(`Execution failed on attempt ${i + 1}: ${execError.message}`);
+        this.logger.warn(`LibreOffice execution failed: ${execError.message}`);
         lastError = execError.message;
       }
     }
 
-    throw new Error(`All LibreOffice conversion attempts failed. Last error: ${lastError}`);
+    throw new Error(`Enhanced LibreOffice conversion failed after ${enhancedCommands.length} attempts. Last error: ${lastError}`);
   }
 
   /**

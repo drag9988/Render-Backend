@@ -250,12 +250,48 @@ export class OnlyOfficeEnhancedService {
           height: 100,
           width: 100
         },
-        // PDF-specific import options
+        // Format-specific import options
         ...(targetFormat === 'docx' && {
           region: 'US',
           delimiter: {
             paragraph: true,
             column: false
+          }
+        }),
+        // PowerPoint-specific options for better conversion
+        ...(targetFormat === 'pptx' && {
+          region: 'US',
+          codePage: 65001, // UTF-8
+          delimiter: {
+            paragraph: true,
+            column: true
+          },
+          // Enhanced PowerPoint conversion settings
+          spreadsheetLayout: {
+            orientation: 'landscape',
+            fitToPage: true,
+            gridLines: false
+          },
+          // Try to preserve text structure
+          textSettings: {
+            extractText: true,
+            preserveFormatting: true,
+            recognizeStructure: true
+          }
+        }),
+        // Excel-specific options
+        ...(targetFormat === 'xlsx' && {
+          region: 'US',
+          codePage: 65001,
+          delimiter: {
+            paragraph: false,
+            column: true,
+            row: true
+          },
+          spreadsheetLayout: {
+            orientation: 'portrait',
+            fitToPage: false,
+            gridLines: true
           }
         })
       };
@@ -416,22 +452,45 @@ export class OnlyOfficeEnhancedService {
    * Advanced LibreOffice conversion with PDF import optimizations
    */
   private async convertViaAdvancedLibreOffice(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer> {
-    const advancedCommands = [
-      // Method 1: Use Writer with PDF import and OCR-like text extraction
-      `libreoffice --headless --writer --convert-to ${targetFormat}:"MS Word 2007 XML" --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 2: Advanced PDF import with text layer preservation
-      `libreoffice --headless --convert-to ${targetFormat} --infilter="impress_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 3: Draw import for complex layouts, then export to target format
-      `libreoffice --headless --draw --convert-to ${targetFormat} --infilter="draw_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 4: Writer import with enhanced text recovery
-      `libreoffice --headless --writer --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 5: Standard conversion with maximum compatibility
-      `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`
-    ];
+    const advancedCommands = [];
+    
+    if (targetFormat === 'pptx') {
+      // Specialized PowerPoint conversion commands
+      advancedCommands.push(
+        // Method 1: Import as Draw document first, then convert to PowerPoint
+        `libreoffice --headless --draw --convert-to pptx:"Impress MS PowerPoint 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 2: Use Impress directly with PDF import
+        `libreoffice --headless --impress --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 3: Force PDF import filter for better text extraction
+        `libreoffice --headless --convert-to pptx --infilter="impress_pdf_Import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 4: Draw import with explicit PDF handling
+        `libreoffice --headless --draw --convert-to pptx --infilter="draw_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 5: Writer import first (for text extraction), then export
+        `libreoffice --headless --writer --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+      );
+    } else {
+      // Original commands for other formats
+      advancedCommands.push(
+        // Method 1: Use Writer with PDF import and OCR-like text extraction
+        `libreoffice --headless --writer --convert-to ${targetFormat}:"MS Word 2007 XML" --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 2: Advanced PDF import with text layer preservation
+        `libreoffice --headless --convert-to ${targetFormat} --infilter="impress_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 3: Draw import for complex layouts, then export to target format
+        `libreoffice --headless --draw --convert-to ${targetFormat} --infilter="draw_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 4: Writer import with enhanced text recovery
+        `libreoffice --headless --writer --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        
+        // Method 5: Standard conversion with maximum compatibility
+        `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+      );
+    }
 
     let lastError = '';
     
@@ -766,66 +825,253 @@ def premium_convert_to_xlsx(input_path, output_path):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """Premium PDF to PPTX conversion with high-quality image rendering"""
-    print(f"🚀 Starting PREMIUM PDF to PPTX conversion...")
+    """Enhanced PDF to PPTX conversion with text extraction and smart layout"""
+    print(f"🚀 Starting ENHANCED PDF to PPTX conversion...")
     
+    # Method 1: Advanced text and layout extraction with formatted slides
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Inches
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import WD_ALIGN_PARAGRAPH
+        from pptx.dml.color import RGBColor
         import io
+        import re
         
-        print("🎨 Using PyMuPDF + python-pptx (Premium Method)...")
+        print("🎨 Using Enhanced PyMuPDF + python-pptx (Smart Layout Method)...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
         
-        # Set slide dimensions based on PDF
-        if len(pdf_doc) > 0:
-            first_page = pdf_doc.load_page(0)
-            page_rect = first_page.rect
-            # Convert points to inches (72 points = 1 inch)
-            slide_width = Inches(page_rect.width / 72)
-            slide_height = Inches(page_rect.height / 72)
-            prs.slide_width = int(slide_width)
-            prs.slide_height = int(slide_height)
+        # Set optimal slide dimensions (16:9 widescreen)
+        prs.slide_width = Inches(13.33)
+        prs.slide_height = Inches(7.5)
         
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            # Create slide
-            slide_layout = prs.slide_layouts[6]  # Blank layout
+            # Extract text blocks with detailed formatting information
+            blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
+            
+            # Create slide with title and content layout
+            slide_layout = prs.slide_layouts[1]  # Title and Content layout
             slide = prs.slides.add_slide(slide_layout)
             
-            # Render page as high-quality image
-            mat = fitz.Matrix(2.0, 2.0)  # 2x scaling for better quality
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            img_data = pix.tobytes("png")
+            # Initialize slide components
+            title_box = slide.shapes.title
+            content_box = slide.placeholders[1]
             
-            # Add image to slide
-            image_stream = io.BytesIO(img_data)
-            slide.shapes.add_picture(
-                image_stream, 
-                0, 0, 
-                width=prs.slide_width, 
-                height=prs.slide_height
-            )
+            # Extract and organize content
+            title_text = ""
+            content_lines = []
+            large_text_items = []
+            regular_text_items = []
             
-            print(f"📄 Processed slide {page_num + 1}/{len(pdf_doc)}")
+            for block in blocks:
+                if 'lines' in block:
+                    block_text = ""
+                    max_font_size = 0
+                    block_color = None
+                    
+                    for line in block["lines"]:
+                        line_text = ""
+                        for span in line["spans"]:
+                            text = span['text'].strip()
+                            if text:
+                                line_text += text + " "
+                                font_size = span.get('size', 12)
+                                max_font_size = max(max_font_size, font_size)
+                                
+                                # Extract color information
+                                if 'color' in span and not block_color:
+                                    color_int = span['color']
+                                    block_color = {
+                                        'r': (color_int >> 16) & 255,
+                                        'g': (color_int >> 8) & 255,
+                                        'b': color_int & 255
+                                    }
+                        
+                        if line_text.strip():
+                            block_text += line_text.strip() + "\\n"
+                    
+                    if block_text.strip():
+                        text_item = {
+                            'text': block_text.strip(),
+                            'font_size': max_font_size,
+                            'color': block_color,
+                            'bbox': block.get('bbox', [0, 0, 0, 0])
+                        }
+                        
+                        # Categorize text by size and position
+                        if max_font_size >= 16:  # Title-like text
+                            large_text_items.append(text_item)
+                        else:  # Regular content
+                            regular_text_items.append(text_item)
+            
+            # Set slide title from largest/first significant text
+            if large_text_items:
+                # Use the largest text or text at the top as title
+                title_item = max(large_text_items, key=lambda x: x['font_size'])
+                title_text = title_item['text'].split('\\n')[0]  # First line only
+                title_box.text = title_text
+                
+                # Format title
+                if title_box.text_frame.paragraphs:
+                    title_para = title_box.text_frame.paragraphs[0]
+                    title_para.font.size = Pt(min(title_item['font_size'] + 4, 28))
+                    title_para.font.bold = True
+                    if title_item['color']:
+                        title_para.font.color.rgb = RGBColor(
+                            title_item['color']['r'],
+                            title_item['color']['g'],
+                            title_item['color']['b']
+                        )
+            
+            # Add content to slide
+            if regular_text_items or large_text_items:
+                content_text_frame = content_box.text_frame
+                content_text_frame.clear()
+                
+                # Add content from regular text items
+                all_content_items = regular_text_items + [item for item in large_text_items if item['text'] != title_text]
+                
+                for i, item in enumerate(all_content_items):
+                    if i > 0:
+                        content_text_frame.add_paragraph()
+                    
+                    para = content_text_frame.paragraphs[i] if i < len(content_text_frame.paragraphs) else content_text_frame.add_paragraph()
+                    para.text = item['text']
+                    para.font.size = Pt(min(max(item['font_size'], 10), 18))
+                    
+                    # Apply color if available
+                    if item['color']:
+                        para.font.color.rgb = RGBColor(
+                            item['color']['r'],
+                            item['color']['g'],
+                            item['color']['b']
+                        )
+                    
+                    # Add some spacing
+                    para.space_after = Pt(6)
+            
+            # If no text was extracted, fall back to high-quality image
+            if not title_text and not regular_text_items:
+                print(f"📄 No text found on page {page_num + 1}, using high-quality image...")
+                
+                # Remove title and content placeholders
+                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+                
+                # Render page as very high-quality image
+                mat = fitz.Matrix(3.0, 3.0)  # 3x scaling for excellent quality
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_data = pix.tobytes("png")
+                
+                # Add image to slide with proper scaling
+                image_stream = io.BytesIO(img_data)
+                
+                # Calculate proper image dimensions while maintaining aspect ratio
+                page_rect = page.rect
+                aspect_ratio = page_rect.width / page_rect.height
+                slide_aspect = prs.slide_width / prs.slide_height
+                
+                if aspect_ratio > slide_aspect:
+                    # Image is wider, fit to width
+                    img_width = prs.slide_width
+                    img_height = int(prs.slide_width / aspect_ratio)
+                    left = 0
+                    top = (prs.slide_height - img_height) // 2
+                else:
+                    # Image is taller, fit to height
+                    img_height = prs.slide_height
+                    img_width = int(prs.slide_height * aspect_ratio)
+                    left = (prs.slide_width - img_width) // 2
+                    top = 0
+                
+                slide.shapes.add_picture(
+                    image_stream, 
+                    left, top, 
+                    width=img_width, 
+                    height=img_height
+                )
+            
+            print(f"📄 Enhanced slide {page_num + 1}/{len(pdf_doc)} completed")
         
         prs.save(output_path)
         pdf_doc.close()
         
         if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
-            print(f"✅ Premium PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            print(f"✅ Enhanced PPTX conversion successful: {os.path.getsize(output_path)} bytes")
             return True
             
     except ImportError:
-        print("📦 Installing PyMuPDF and python-pptx...")
+        print("📦 Installing Enhanced PyMuPDF and python-pptx...")
         if install_package('PyMuPDF') and install_package('python-pptx'):
             return premium_convert_to_pptx(input_path, output_path)
     except Exception as e:
-        print(f"❌ Premium PPTX conversion failed: {e}")
+        print(f"❌ Enhanced PPTX conversion failed: {e}")
+    
+    # Method 2: Fallback to structured text extraction with better layout
+    try:
+        import fitz
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+        import io
+        
+        print("📋 Using Structured Text Extraction Method...")
+        
+        pdf_doc = fitz.open(input_path)
+        prs = Presentation()
+        prs.slide_width = Inches(13.33)
+        prs.slide_height = Inches(7.5)
+        
+        for page_num in range(len(pdf_doc)):
+            page = pdf_doc.load_page(page_num)
+            
+            # Get text in a more structured way
+            text_dict = page.get_text("dict")
+            
+            # Create slide
+            slide_layout = prs.slide_layouts[1]  # Title and Content
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Extract all text
+            all_text = page.get_text()
+            lines = [line.strip() for line in all_text.split('\\n') if line.strip()]
+            
+            if lines:
+                # Use first line as title
+                slide.shapes.title.text = lines[0]
+                
+                # Use remaining lines as content
+                if len(lines) > 1:
+                    content_box = slide.placeholders[1]
+                    text_frame = content_box.text_frame
+                    text_frame.clear()
+                    
+                    for i, line in enumerate(lines[1:]):
+                        if i > 0:
+                            text_frame.add_paragraph()
+                        para = text_frame.paragraphs[i] if i < len(text_frame.paragraphs) else text_frame.add_paragraph()
+                        para.text = line
+                        para.font.size = Pt(14)
+            else:
+                # No text, use image
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                mat = fitz.Matrix(2.5, 2.5)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_data = pix.tobytes("png")
+                image_stream = io.BytesIO(img_data)
+                slide.shapes.add_picture(image_stream, 0, 0, prs.slide_width, prs.slide_height)
+        
+        prs.save(output_path)
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+            print(f"✅ Structured PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Structured PPTX conversion failed: {e}")
     
     return False
 
@@ -944,34 +1190,101 @@ def basic_convert_to_xlsx(input_path, output_path):
     return False
 
 def basic_convert_to_pptx(input_path, output_path):
-    """Basic PDF to PPTX conversion"""
+    """Enhanced basic PDF to PPTX conversion with text extraction"""
     try:
         import fitz
         from pptx import Presentation
+        from pptx.util import Inches, Pt
         import io
+        
+        print("🎨 Enhanced Basic PPTX Conversion...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
         
-        for page in pdf_doc:
-            slide_layout = prs.slide_layouts[6]
-            slide = prs.slides.add_slide(slide_layout)
+        # Set standard widescreen dimensions
+        prs.slide_width = Inches(13.33)
+        prs.slide_height = Inches(7.5)
+        
+        for page_num in range(len(pdf_doc)):
+            page = pdf_doc.load_page(page_num)
             
-            pix = page.get_pixmap()
-            img_data = pix.tobytes("png")
-            image_stream = io.BytesIO(img_data)
+            # Try to extract text first
+            text = page.get_text()
+            text_lines = [line.strip() for line in text.split('\\n') if line.strip()]
             
-            slide.shapes.add_picture(image_stream, 0, 0)
+            if text_lines and len(' '.join(text_lines)) > 50:  # Meaningful text content
+                # Create slide with title and content layout
+                slide_layout = prs.slide_layouts[1]  # Title and Content
+                slide = prs.slides.add_slide(slide_layout)
+                
+                # Set title from first line
+                title = text_lines[0]
+                if len(title) > 60:  # Truncate long titles
+                    title = title[:60] + "..."
+                slide.shapes.title.text = title
+                
+                # Add content
+                if len(text_lines) > 1:
+                    content_box = slide.placeholders[1]
+                    text_frame = content_box.text_frame
+                    text_frame.clear()
+                    
+                    # Add up to 10 lines of content
+                    content_lines = text_lines[1:11]  # Limit content
+                    for i, line in enumerate(content_lines):
+                        if i > 0:
+                            text_frame.add_paragraph()
+                        para = text_frame.paragraphs[i] if i < len(text_frame.paragraphs) else text_frame.add_paragraph()
+                        para.text = line
+                        para.font.size = Pt(14)
+                        para.space_after = Pt(6)
+                
+                print(f"📄 Text slide {page_num + 1} created with {len(text_lines)} lines")
+            else:
+                # No meaningful text, use high-quality image
+                slide_layout = prs.slide_layouts[6]  # Blank layout
+                slide = prs.slides.add_slide(slide_layout)
+                
+                # Render as high-quality image
+                mat = fitz.Matrix(2.5, 2.5)  # High resolution
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_data = pix.tobytes("png")
+                image_stream = io.BytesIO(img_data)
+                
+                # Add image with proper scaling
+                page_rect = page.rect
+                aspect_ratio = page_rect.width / page_rect.height
+                slide_aspect = float(prs.slide_width) / float(prs.slide_height)
+                
+                if aspect_ratio > slide_aspect:
+                    # Fit to width
+                    img_width = prs.slide_width
+                    img_height = int(prs.slide_width / aspect_ratio)
+                    left = 0
+                    top = (prs.slide_height - img_height) // 2
+                else:
+                    # Fit to height
+                    img_height = prs.slide_height
+                    img_width = int(prs.slide_height * aspect_ratio)
+                    left = (prs.slide_width - img_width) // 2
+                    top = 0
+                
+                slide.shapes.add_picture(image_stream, left, top, img_width, img_height)
+                print(f"📄 Image slide {page_num + 1} created")
         
         prs.save(output_path)
         pdf_doc.close()
-        return True
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
+            print(f"✅ Enhanced Basic PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            return True
         
     except ImportError:
         if install_package('PyMuPDF') and install_package('python-pptx'):
             return basic_convert_to_pptx(input_path, output_path)
     except Exception as e:
-        print(f"Basic PPTX conversion failed: {e}")
+        print(f"❌ Enhanced Basic PPTX conversion failed: {e}")
     return False
 
 if __name__ == "__main__":
