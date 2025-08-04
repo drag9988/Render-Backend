@@ -125,14 +125,21 @@ export class OnlyOfficeEnhancedService {
         this.logger.warn(`❌ Python conversion failed: ${pythonError.message}`);
       }
 
-      // Method 3: Enhanced LibreOffice with specialized options
-      try {
-        const result = await this.convertViaEnhancedLibreOffice(tempInputPath, tempOutputPath, targetFormat);
-        this.logger.log(`✅ Enhanced LibreOffice conversion successful: ${result.length} bytes`);
-        return result;
-      } catch (libreOfficeError) {
-        this.logger.error(`❌ Enhanced LibreOffice failed: ${libreOfficeError.message}`);
-        throw new Error(`All conversion methods failed. Last error: ${libreOfficeError.message}`);
+      // Method 3: Enhanced LibreOffice with specialized options (Note: Limited PDF to Office support)
+      if (targetFormat === 'docx') {
+        // LibreOffice can handle PDF to DOCX reasonably well
+        try {
+          const result = await this.convertViaEnhancedLibreOffice(tempInputPath, tempOutputPath, targetFormat);
+          this.logger.log(`✅ Enhanced LibreOffice conversion successful: ${result.length} bytes`);
+          return result;
+        } catch (libreOfficeError) {
+          this.logger.error(`❌ Enhanced LibreOffice failed: ${libreOfficeError.message}`);
+          throw new Error(`All conversion methods failed. PDF to ${targetFormat.toUpperCase()} requires Python libraries (pdf2docx, PyMuPDF, pdfplumber) for best results. Last error: ${libreOfficeError.message}`);
+        }
+      } else {
+        // For XLSX and PPTX, LibreOffice has very limited support
+        this.logger.warn(`⚠️ LibreOffice has limited support for PDF to ${targetFormat.toUpperCase()} conversions. Python libraries are strongly recommended.`);
+        throw new Error(`PDF to ${targetFormat.toUpperCase()} conversion failed. This format requires specialized Python libraries (PyMuPDF, pdfplumber, camelot-py) which are not available. LibreOffice cannot reliably convert PDF to ${targetFormat.toUpperCase()}.`);
       }
 
     } finally {
@@ -265,14 +272,14 @@ def install_package(package, extra=""):
         raise
 
 def convert_to_docx(input_path, output_path):
-    try {
+    try:
         from pdf2docx import Converter
         cv = Converter(input_path)
         cv.convert(output_path, start=0, end=None)
         cv.close()
         print("✅ pdf2docx conversion successful")
         return True
-    } except ImportError {
+    except ImportError:
         install_package('pdf2docx')
         from pdf2docx import Converter
         cv = Converter(input_path)
@@ -280,14 +287,13 @@ def convert_to_docx(input_path, output_path):
         cv.close()
         print("✅ pdf2docx conversion successful after install")
         return True
-    } catch (Exception e) {
+    except Exception as e:
         print(f"❌ pdf2docx failed: {e}")
         return False
-    }
 
 def convert_to_xlsx(input_path, output_path):
     # Method 1: Try Camelot for structured tables
-    try {
+    try:
         import pandas as pd
         import camelot
         
@@ -300,21 +306,20 @@ def convert_to_xlsx(input_path, output_path):
                     table.df.to_excel(writer, sheet_name=f'Page_{table.page}_Table_{i+1}', index=False, header=True)
             print(f"✅ Camelot conversion successful, found {tables.n} tables.")
             return True
-        else {
+        else:
             print("Camelot did not find any tables. Falling back to pdfplumber.")
-        }
-    } catch (ImportError) {
+            
+    except ImportError:
         print("Camelot not found, installing...")
         install_package('camelot-py', extra="[cv]")
         install_package('pandas')
         install_package('openpyxl')
         return convert_to_xlsx(input_path, output_path) # Retry
-    } catch (Exception e) {
+    except Exception as e:
         print(f"❌ Camelot failed: {e}. Falling back to pdfplumber.")
-    }
 
     # Method 2: Fallback to pdfplumber for table extraction
-    try {
+    try:
         import pdfplumber
         import pandas as pd
 
@@ -334,8 +339,8 @@ def convert_to_xlsx(input_path, output_path):
                     df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
             print(f"✅ pdfplumber table extraction successful, found {len(all_tables)} tables.")
             return True
-        else {
-            print("pdfplumber did not find any tables, extracting raw text as last resort.");
+        else:
+            print("pdfplumber did not find any tables, extracting raw text as last resort.")
             # If no tables, extract raw text per page
             with pdfplumber.open(input_path) as pdf:
                 with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
@@ -343,24 +348,22 @@ def convert_to_xlsx(input_path, output_path):
                         text = page.extract_text()
                         if text:
                             lines = text.split('\\n')
-                            df = pd.DataFrame(lines, columns=['Content']);
+                            df = pd.DataFrame(lines, columns=['Content'])
                             df.to_excel(writer, sheet_name=f'Page_{i+1}_Text', index=False)
-            print("✅ pdfplumber raw text extraction successful.");
+            print("✅ pdfplumber raw text extraction successful.")
             return True
-        }
 
-    } catch (ImportError) {
+    except ImportError:
         install_package('pdfplumber')
         install_package('pandas')
         install_package('openpyxl')
         return convert_to_xlsx(input_path, output_path) # Retry after install
-    } catch (Exception e) {
+    except Exception as e:
         print(f"❌ pdfplumber failed: {e}")
         return False
-    }
 
 def convert_to_pptx(input_path, output_path):
-    try {
+    try:
         import fitz  # PyMuPDF
         from pptx import Presentation
         from pptx.util import Emu, Pt
@@ -408,23 +411,22 @@ def convert_to_pptx(input_path, output_path):
                                 tf.word_wrap = False
                                 
                                 p = tf.paragraphs[0]
-                                run = p.add_run();
-                                run.text = text;
-                                font = run.font;
-                                font.size = Pt(int(font_size));
+                                run = p.add_run()
+                                run.text = text
+                                font = run.font
+                                font.size = Pt(int(font_size))
 
         prs.save(output_path)
         print("✅ PyMuPDF to PPTX conversion successful")
         return True
 
-    } catch (ImportError) {
+    except ImportError:
         install_package('PyMuPDF')
         install_package('python-pptx')
         return convert_to_pptx(input_path, output_path) # Retry
-    } catch (Exception e) {
+    except Exception as e:
         print(f"❌ PyMuPDF to PPTX conversion failed: {e}")
         return False
-    }
 
 def convert_pdf(input_path, output_path, format_type):
     success = False
@@ -439,12 +441,12 @@ def convert_pdf(input_path, output_path, format_type):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print(f"Usage: python {sys.argv[0]} <input.pdf> <output.ext> <format>");
-        sys.exit(1);
+        print(f"Usage: python {sys.argv[0]} <input.pdf> <output.ext> <format>")
+        sys.exit(1)
     
     input_file = sys.argv[1]
     output_file = sys.argv[2]
-    format_type = sys.argv[3].lower();
+    format_type = sys.argv[3].lower()
     
     if not os.path.exists(input_file):
         print(f"❌ Input file not found: {input_file}")
@@ -465,18 +467,23 @@ if __name__ == "__main__":
    */
   private async convertViaEnhancedLibreOffice(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer> {
     const commands = [
-      // Method 1: Specialized conversion based on target format
+      // Method 1: Import PDF as text and convert (for docx)
       targetFormat === 'docx' 
-        ? `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --writer --convert-to docx:"MS Word 2007 XML" --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+        ? `libreoffice --headless --writer --convert-to docx --outdir "${path.dirname(outputPath)}" "${inputPath}"`
         : targetFormat === 'xlsx'
-        ? `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --calc --convert-to xlsx:"Calc MS Excel 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`
-        : `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --impress --convert-to pptx:"MS PowerPoint 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        ? `libreoffice --headless --calc --convert-to xlsx --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+        : `libreoffice --headless --draw --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
       
-      // Method 2: Enhanced standard conversion
-      `libreoffice --headless --convert-to ${targetFormat} --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-      
-      // Method 3: Alternative approach
+      // Method 2: Standard conversion with PDF import filter
       `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      
+      // Method 3: Use Draw for all PDF conversions (most compatible)
+      `libreoffice --headless --draw --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      
+      // Method 4: Force Writer import for text-based conversions
+      targetFormat === 'docx' 
+        ? `libreoffice --headless --writer --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+        : `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`
     ];
 
     let lastError = '';
