@@ -381,43 +381,44 @@ def convert_to_pptx(input_path, output_path):
             slide_layout = prs.slide_layouts[6]  # Index 6 is a blank slide
             slide = prs.slides.add_slide(slide_layout)
 
-            # Add PDF page as a background image to preserve layout perfectly (non-editable)
-            pix = page.get_pixmap(dpi=150)
-            image_stream = io.BytesIO(pix.tobytes("png"))
-            slide.shapes.add_picture(image_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
+            # Option 1: Extract text only (editable, no background image to avoid duplication)
+            blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
+            text_added = False
+            
+            for block in blocks:
+                if 'lines' in block:
+                    for line in block["lines"]:
+                        for span in line["spans"]:
+                            text = span['text']
+                            if not text.strip():
+                                continue
 
-            # The text overlay is disabled because it was causing content to be duplicated.
-            # The image background preserves the layout, which is often more important for presentations.
-            #
-            # # Overlay extracted text for editability
-            # blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
-            # for block in blocks:
-            #     if 'lines' in block:
-            #         for line in block["lines"]:
-            #             for span in line["spans"]:
-            #                 text = span['text']
-            #                 if not text.strip():
-            #                     continue
-
-            #                 rect = span['bbox']
-            #                 font_size = span['size']
+                            rect = span['bbox']
+                            font_size = span['size']
                             
-            #                 left = int(rect[0] * 12700)
-            #                 top = int(rect[1] * 12700)
-            #                 width = int((rect[2] - rect[0]) * 12700)
-            #                 height = int((rect[3] - rect[1]) * 12700)
+                            left = int(rect[0] * 12700)
+                            top = int(rect[1] * 12700)
+                            width = int((rect[2] - rect[0]) * 12700)
+                            height = int((rect[3] - rect[1]) * 12700)
                             
-            #                 if width > 0 and height > 0:
-            #                     txBox = slide.shapes.add_textbox(left, top, width, height)
-            #                     tf = txBox.text_frame
-            #                     tf.margin_left, tf.margin_right, tf.margin_top, tf.margin_bottom = 0, 0, 0, 0
-            #                     tf.word_wrap = False
+                            if width > 0 and height > 0:
+                                txBox = slide.shapes.add_textbox(left, top, width, height)
+                                tf = txBox.text_frame
+                                tf.margin_left, tf.margin_right, tf.margin_top, tf.margin_bottom = 0, 0, 0, 0
+                                tf.word_wrap = False
                                 
-            #                     p = tf.paragraphs[0]
-            #                     run = p.add_run()
-            #                     run.text = text
-            #                     font = run.font
-            #                     font.size = Pt(int(font_size))
+                                p = tf.paragraphs[0]
+                                run = p.add_run()
+                                run.text = text
+                                font = run.font
+                                font.size = Pt(max(8, min(int(font_size), 72)))  # Clamp font size
+                                text_added = True
+            
+            # If no text was extracted, add the page as an image (fallback for image-based PDFs)
+            if not text_added:
+                pix = page.get_pixmap(dpi=150)
+                image_stream = io.BytesIO(pix.tobytes("png"))
+                slide.shapes.add_picture(image_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
 
         prs.save(output_path)
         print("✅ PyMuPDF to PPTX conversion successful")

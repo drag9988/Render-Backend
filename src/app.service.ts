@@ -6,7 +6,6 @@ import * as multer from 'multer';
 import { OnlyOfficeService } from './onlyoffice.service';
 import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
-import * as path from 'path';
 
 @Injectable()
 export class AppService {
@@ -199,18 +198,81 @@ export class AppService {
       }
       
       // Standard LibreOffice conversion for other formats
-      const command = `libreoffice --headless --convert-to ${format} --outdir ${tempDir} ${tempInput}`;
-      this.logger.log(`Executing command: ${command}`);
+      let command = '';
       
-      // Increase timeout for potentially long-running conversions
-      const { stdout, stderr } = await this.execAsync(command, { timeout: 60000 });
-      
-      if (stdout) {
-        this.logger.log(`LibreOffice conversion output: ${stdout}`);
-      }
-      
-      if (stderr) {
-        this.logger.error(`LibreOffice conversion error: ${stderr}`);
+      // Special handling for Excel files to PDF with better command options
+      if (file.mimetype.includes('sheet') && format === 'pdf') {
+        this.logger.log('Using specialized Excel to PDF conversion commands');
+        // Try multiple Excel-specific conversion approaches
+        const excelCommands = [
+          `libreoffice --headless --calc --convert-to pdf:calc_pdf_Export --outdir "${tempDir}" "${tempInput}"`,
+          `libreoffice --headless --invisible --calc --convert-to pdf --outdir "${tempDir}" "${tempInput}"`,
+          `libreoffice --headless --convert-to pdf --outdir "${tempDir}" "${tempInput}"`
+        ];
+        
+        let conversionSuccess = false;
+        let lastError = '';
+        
+        for (let i = 0; i < excelCommands.length && !conversionSuccess; i++) {
+          command = excelCommands[i];
+          this.logger.log(`Excel conversion attempt ${i + 1}: ${command}`);
+          
+          try {
+            const { stdout, stderr } = await this.execAsync(command, { 
+              timeout: 90000, // 90 seconds for Excel files
+              maxBuffer: 1024 * 1024 * 10 
+            });
+            
+            if (stdout) {
+              this.logger.log(`LibreOffice Excel conversion output (attempt ${i + 1}): ${stdout}`);
+            }
+            
+            if (stderr && !stderr.includes('Warning') && !stderr.includes('deprecated')) {
+              this.logger.warn(`LibreOffice Excel conversion stderr (attempt ${i + 1}): ${stderr}`);
+              lastError = stderr;
+            }
+
+            // Check if output file exists
+            try {
+              await fs.access(tempOutput);
+              const stats = await fs.stat(tempOutput);
+              if (stats.size > 1000) { // Ensure reasonable PDF size
+                this.logger.log(`Excel to PDF conversion successful on attempt ${i + 1}, size: ${stats.size} bytes`);
+                conversionSuccess = true;
+                break;
+              } else {
+                this.logger.log(`Excel PDF too small (${stats.size} bytes), trying next method`);
+                await fs.unlink(tempOutput).catch(() => {});
+              }
+            } catch (accessError) {
+              this.logger.warn(`Output file not found after attempt ${i + 1}: ${accessError.message}`);
+            }
+            
+          } catch (execError) {
+            this.logger.error(`Excel conversion execution failed on attempt ${i + 1}: ${execError.message}`);
+            lastError = execError.message;
+          }
+        }
+        
+        if (!conversionSuccess) {
+          throw new Error(`Excel to PDF conversion failed after ${excelCommands.length} attempts. Last error: ${lastError}`);
+        }
+        
+      } else {
+        // Standard conversion for other file types
+        command = `libreoffice --headless --convert-to ${format} --outdir "${tempDir}" "${tempInput}"`;
+        this.logger.log(`Executing standard command: ${command}`);
+        
+        // Increase timeout for potentially long-running conversions
+        const { stdout, stderr } = await this.execAsync(command, { timeout: 60000 });
+        
+        if (stdout) {
+          this.logger.log(`LibreOffice conversion output: ${stdout}`);
+        }
+        
+        if (stderr) {
+          this.logger.error(`LibreOffice conversion error: ${stderr}`);
+        }
       }
 
       // Check if output file exists
@@ -457,27 +519,121 @@ export class AppService {
   }
 
   private async executeEnhancedExcelToPdfConversion(tempInput: string, tempOutput: string, tempDir: string): Promise<Buffer> {
+    this.logger.log(`Attempting enhanced Excel to PDF conversion using multiple specialized approaches`);
+    
+    // Enhanced LibreOffice commands specifically for Excel files
     const commands = [
+      // Method 1: Use Calc with explicit PDF export filter
+      `libreoffice --headless --calc --convert-to pdf:calc_pdf_Export --outdir "${tempDir}" "${tempInput}"`,
+      
+      // Method 2: Use invisible mode with Calc
+      `libreoffice --headless --invisible --calc --convert-to pdf --outdir "${tempDir}" "${tempInput}"`,
+      
+      // Method 3: Standard calc conversion
       `libreoffice --headless --calc --convert-to pdf --outdir "${tempDir}" "${tempInput}"`,
-      `libreoffice --headless --infilter="calc_pdf_import" --convert-to pdf --outdir "${tempDir}" "${tempInput}"`
+      
+      // Method 4: Force all sheets to single PDF
+      `libreoffice --headless --convert-to pdf:calc_pdf_Export:"SelectPdfVersion=1" --outdir "${tempDir}" "${tempInput}"`,
+      
+      // Method 5: Use writer import (sometimes works for simple spreadsheets)
+      `libreoffice --headless --writer --convert-to pdf --outdir "${tempDir}" "${tempInput}"`,
+      
+      // Method 6: Basic conversion without quotes (Windows path handling)
+      `libreoffice --headless --convert-to pdf --outdir ${tempDir.replace(/\s/g, '\\ ')} ${tempInput.replace(/\s/g, '\\ ')}`
     ];
 
     let lastError = '';
-
-    for (const command of commands) {
+    const baseName = path.basename(tempInput, path.extname(tempInput));
+    
+    for (let i = 0; i < commands.length; i++) {
+      const command = commands[i];
+      this.logger.log(`Enhanced Excel attempt ${i + 1}: ${command}`);
+      
       try {
-        this.logger.log(`Executing enhanced command: ${command}`);
-        await this.execAsync(command, { timeout: 90000 });
-        const result = await fs.readFile(tempOutput);
-        if (result.length > 100) {
+        const { stdout, stderr } = await this.execAsync(command, { 
+          timeout: 90000, // 90 seconds for complex Excel files
+          maxBuffer: 1024 * 1024 * 10 // 10MB buffer
+        });
+        
+        if (stdout) {
+          this.logger.log(`Excel conversion output (attempt ${i + 1}): ${stdout}`);
+        }
+        
+        if (stderr) {
+          this.logger.warn(`Excel conversion stderr (attempt ${i + 1}): ${stderr}`);
+          if (!stderr.includes('Warning') && !stderr.includes('deprecated')) {
+            lastError = stderr;
+          }
+        }
+
+        // Check if output file exists with various possible names
+        const possibleOutputPaths = [
+          tempOutput,
+          path.join(tempDir, `${baseName}.pdf`),
+          path.join(tempDir, path.basename(tempInput).replace(/\.[^.]+$/, '.pdf'))
+        ];
+        
+        let outputFound = false;
+        let result: Buffer | null = null;
+        
+        for (const outputPath of possibleOutputPaths) {
+          try {
+            await fs.access(outputPath);
+            const stats = await fs.stat(outputPath);
+            
+            if (stats.size > 1000) { // Ensure reasonable PDF size
+              this.logger.log(`Successful Excel to PDF conversion on attempt ${i + 1}, file: ${outputPath}, size: ${stats.size} bytes`);
+              result = await fs.readFile(outputPath);
+              await fs.unlink(outputPath).catch(() => {}); // Clean up
+              outputFound = true;
+              break;
+            } else {
+              this.logger.log(`Excel PDF file too small (${stats.size} bytes) at ${outputPath}, trying next method`);
+              await fs.unlink(outputPath).catch(() => {});
+            }
+          } catch (err) {
+            // File doesn't exist, continue checking other paths
+          }
+        }
+        
+        if (outputFound && result) {
           return result;
         }
-      } catch (error) {
-        lastError = error.message;
-        this.logger.warn(`Enhanced command failed: ${lastError}`);
+        
+      } catch (execError) {
+        this.logger.error(`Excel conversion execution failed on attempt ${i + 1}: ${execError.message}`);
+        lastError = execError.message;
+        
+        // Clean up any partial files
+        const possibleOutputPaths = [
+          tempOutput,
+          path.join(tempDir, `${baseName}.pdf`),
+          path.join(tempDir, path.basename(tempInput).replace(/\.[^.]+$/, '.pdf'))
+        ];
+        
+        for (const outputPath of possibleOutputPaths) {
+          await fs.unlink(outputPath).catch(() => {});
+        }
       }
     }
-    throw new Error(`Enhanced Excel to PDF conversion failed. Last error: ${lastError}`);
+    
+    // If all enhanced LibreOffice attempts fail, provide detailed error message
+    let errorMessage = `Enhanced Excel to PDF conversion failed after ${commands.length} specialized attempts. `;
+    
+    if (lastError.includes('not found') || lastError.includes('command not found')) {
+      errorMessage += `LibreOffice is not installed or not accessible. Please ensure LibreOffice is properly installed and in the system PATH. `;
+    } else if (lastError.includes('Permission denied') || lastError.includes('access')) {
+      errorMessage += `Permission error - check file access rights and ensure the temporary directory is writable. `;
+    } else if (lastError.includes('timeout')) {
+      errorMessage += `Conversion timed out - the Excel file may be too large, complex, or contain unsupported features. `;
+    } else if (lastError.includes('export filter') || lastError.includes('filter')) {
+      errorMessage += `LibreOffice export filter error - the Excel file format may be unsupported or corrupted. `;
+    } else {
+      errorMessage += `The Excel file may be corrupted, password-protected, contain macros, or use unsupported Excel features. `;
+    }
+    
+    errorMessage += `Try with a simpler .xlsx file without macros, charts, or complex formatting. Last error: ${lastError}`;
+    throw new Error(errorMessage);
   }
 
   async analyzePdfFile(pdfPath: string): Promise<{isScanned: boolean, hasComplexLayout: boolean, isProtected: boolean, pageCount: number}> {
@@ -725,22 +881,20 @@ export class AppService {
     } catch (error) {
       this.logger.error(`PDF compression error: ${error.message}`);
       this.logger.error(`Error stack trace:`, error.stack);
-      this.logger.error(`PDF compression error: ${error.message}`);
-      this.logger.error(`Error stack trace:`, error.stack);// Provide specific error messages for different failure cases
       
-      // Provide specific error messages for different failure casesera') || error.message.includes('high-resolution')) {
-      if (error.message.includes('timeout')) { photos that take too long to compress. Try reducing image quality or using "low" quality setting.');
+      // Provide specific error messages for different failure cases
+      if (error.message.includes('timeout')) {
         if (error.message.includes('mobile camera') || error.message.includes('high-resolution')) {
-          throw new Error('PDF compression timeout: This PDF contains high-resolution mobile camera photos that take too long to compress. Try reducing image quality or using "low" quality setting.');new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
+          throw new Error('PDF compression timeout: This PDF contains high-resolution mobile camera photos that take too long to compress. Try reducing image quality or using "low" quality setting.');
         } else {
-          throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');lse if (error.message.includes('gs: command not found') || error.message.includes('ghostscript')) {
+          throw new Error('PDF compression timed out. This file may be too large or complex. Try with a smaller PDF or lower quality setting.');
         }
       } else if (error.message.includes('gs: command not found') || error.message.includes('ghostscript')) {
-        throw new Error('PDF compression service is not available. Ghostscript is required but not found.');o compress. Try reducing image quality before creating the PDF or use "low" quality setting.');
+        throw new Error('PDF compression service is not available. Ghostscript is required but not found.');
       } else if (error.message.includes('image-heavy') || error.message.includes('mobile camera')) {
-        throw new Error('This PDF contains high-resolution mobile camera photos that are difficult to compress. Try reducing image quality before creating the PDF or use "low" quality setting.');empts
+        throw new Error('This PDF contains high-resolution mobile camera photos that are difficult to compress. Try reducing image quality before creating the PDF or use "low" quality setting.');
       } else if (error.message.includes('All compression methods failed')) {
-        throw error; // Pass through the detailed error from compression attemptsnew Error(`Failed to compress PDF: ${error.message}`);
+        throw error; // Pass through the detailed error from compression attempts
       } else {
         throw new Error(`Failed to compress PDF: ${error.message}`);inally {
       }up temporary files
@@ -755,9 +909,11 @@ export class AppService {
       }
     }
   }  /**
-   * Add password protection to a PDF using LibreOffice
+Add password protection to a PDF using LibreOffice
+  /**
+   * Add password protection to a PDF using LibreOfficenc addPasswordToPdf(file: Express.Multer.File, password: string): Promise<Buffer> {
    */
-  async addPasswordToPdf(file: Express.Multer.File, password: string): Promise<Buffer> {
+  async addPasswordToPdf(file: Express.Multer.File, password: string): Promise<Buffer> {ile provided');
     if (!file || !file.buffer) {
       throw new Error('Invalid file provided');
     }    if (!password || password.trim().length === 0) {
