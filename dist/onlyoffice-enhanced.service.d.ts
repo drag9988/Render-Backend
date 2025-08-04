@@ -13,8 +13,11 @@ export declare class OnlyOfficeEnhancedService {
     convertPdfToPptx(pdfBuffer: Buffer, filename: string): Promise<Buffer>;
     private convertPdf;
     private convertViaOnlyOfficeServer;
-    private convertViaPython;
-    private generatePythonScript;
+    private convertViaPremiumPython;
+    private convertViaAdvancedLibreOffice;
+    private convertViaFallbackPython;
+    private generatePremiumPythonScript;
+    private generateFallbackPythonScript;
     private convertViaEnhancedLibreOffice;
     private generateConversionKey;
     private generateJWT;

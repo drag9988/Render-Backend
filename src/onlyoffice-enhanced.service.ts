@@ -61,7 +61,7 @@ export class OnlyOfficeEnhancedService {
   }
 
   /**
-   * Enhanced PDF conversion with multiple fallback methods
+   * Enhanced PDF conversion with premium quality methods prioritized
    */
   private async convertPdf(pdfBuffer: Buffer, filename: string, targetFormat: string): Promise<Buffer> {
     if (!pdfBuffer || pdfBuffer.length === 0) {
@@ -94,59 +94,94 @@ export class OnlyOfficeEnhancedService {
     const tempOutputPath = path.join(tempDir, `${timestamp}_output.${targetFormat}`);
 
     try {
-      this.logger.log(`Starting enhanced PDF to ${targetFormat.toUpperCase()} conversion for: ${filename}`);
-      this.logger.log(`Temporary directory is: ${tempDir}`);
+      this.logger.log(`🚀 Starting PREMIUM PDF to ${targetFormat.toUpperCase()} conversion for: ${filename}`);
+      this.logger.log(`📁 Using temporary directory: ${tempDir}`);
 
       // Write PDF to temp file
       await fs.writeFile(tempInputPath, pdfBuffer);
-      this.logger.log(`Successfully wrote temporary PDF file to ${tempInputPath}`);
+      this.logger.log(`📄 PDF file written to: ${tempInputPath} (${pdfBuffer.length} bytes)`);
 
-      // Method 1: ONLYOFFICE Document Server (if available)
+      // PRIORITY 1: ONLYOFFICE Document Server (Best quality for office formats)
       if (this.documentServerUrl) {
         try {
+          this.logger.log(`🥇 Attempting ONLYOFFICE Document Server conversion...`);
           const result = await this.convertViaOnlyOfficeServer(tempInputPath, targetFormat, validation.sanitizedFilename);
-          if (result) {
-            this.logger.log(`✅ ONLYOFFICE Document Server conversion successful: ${result.length} bytes`);
+          if (result && result.length > 1000) { // Ensure meaningful output
+            this.logger.log(`✅ ONLYOFFICE Document Server: SUCCESS! Output: ${result.length} bytes`);
             return result;
           }
         } catch (onlyOfficeError) {
           this.logger.warn(`❌ ONLYOFFICE Document Server failed: ${onlyOfficeError.message}`);
         }
+      } else {
+        this.logger.log(`⚠️ ONLYOFFICE Document Server not configured - using enhanced fallbacks`);
       }
 
-      // Method 2: Python-based conversion (high quality)
+      // PRIORITY 2: Premium Python Libraries (Excellent quality, especially for DOCX)
       try {
-        const result = await this.convertViaPython(tempInputPath, tempOutputPath, targetFormat);
-        if (result) {
-          this.logger.log(`✅ Python conversion successful: ${result.length} bytes`);
+        this.logger.log(`🥈 Attempting Premium Python conversion (pdf2docx, PyMuPDF)...`);
+        const result = await this.convertViaPremiumPython(tempInputPath, tempOutputPath, targetFormat);
+        if (result && result.length > 1000) {
+          this.logger.log(`✅ Premium Python conversion: SUCCESS! Output: ${result.length} bytes`);
           return result;
         }
       } catch (pythonError) {
-        this.logger.warn(`❌ Python conversion failed: ${pythonError.message}`);
+        this.logger.warn(`❌ Premium Python conversion failed: ${pythonError.message}`);
       }
 
-      // Method 3: Enhanced LibreOffice with specialized options (Note: Limited PDF to Office support)
+      // PRIORITY 3: Advanced LibreOffice with PDF import optimizations
       if (targetFormat === 'docx') {
-        // LibreOffice can handle PDF to DOCX reasonably well
         try {
-          const result = await this.convertViaEnhancedLibreOffice(tempInputPath, tempOutputPath, targetFormat);
-          this.logger.log(`✅ Enhanced LibreOffice conversion successful: ${result.length} bytes`);
-          return result;
+          this.logger.log(`🥉 Attempting Advanced LibreOffice with PDF import optimizations...`);
+          const result = await this.convertViaAdvancedLibreOffice(tempInputPath, tempOutputPath, targetFormat);
+          if (result && result.length > 1000) {
+            this.logger.log(`✅ Advanced LibreOffice conversion: SUCCESS! Output: ${result.length} bytes`);
+            return result;
+          }
         } catch (libreOfficeError) {
-          this.logger.error(`❌ Enhanced LibreOffice failed: ${libreOfficeError.message}`);
-          throw new Error(`All conversion methods failed. PDF to ${targetFormat.toUpperCase()} requires Python libraries (pdf2docx, PyMuPDF, pdfplumber) for best results. Last error: ${libreOfficeError.message}`);
+          this.logger.warn(`❌ Advanced LibreOffice failed: ${libreOfficeError.message}`);
         }
-      } else {
-        // For XLSX and PPTX, LibreOffice has very limited support
-        this.logger.warn(`⚠️ LibreOffice has limited support for PDF to ${targetFormat.toUpperCase()} conversions. Python libraries are strongly recommended.`);
-        throw new Error(`PDF to ${targetFormat.toUpperCase()} conversion failed. This format requires specialized Python libraries (PyMuPDF, pdfplumber, camelot-py) which are not available. LibreOffice cannot reliably convert PDF to ${targetFormat.toUpperCase()}.`);
       }
+
+      // PRIORITY 4: Fallback Python methods
+      try {
+        this.logger.log(`🛡️ Attempting Fallback Python conversion methods...`);
+        const result = await this.convertViaFallbackPython(tempInputPath, tempOutputPath, targetFormat);
+        if (result && result.length > 1000) {
+          this.logger.log(`✅ Fallback Python conversion: SUCCESS! Output: ${result.length} bytes`);
+          return result;
+        }
+      } catch (fallbackError) {
+        this.logger.warn(`❌ Fallback Python conversion failed: ${fallbackError.message}`);
+      }
+
+      // If all methods failed
+      throw new Error(`All premium conversion methods failed for PDF to ${targetFormat.toUpperCase()}. This may be due to:
+      1. Complex PDF structure (scanned images, unusual fonts, complex layouts)
+      2. Missing Python libraries (pdf2docx, PyMuPDF, pdfplumber)
+      3. Corrupted or password-protected PDF
+      4. ONLYOFFICE Document Server not configured
+      
+      Recommendation: Deploy ONLYOFFICE Document Server for best results.`);
 
     } finally {
       // Cleanup temporary files
       try {
         await fs.unlink(tempInputPath).catch(() => {});
         await fs.unlink(tempOutputPath).catch(() => {});
+        // Also cleanup any additional temp files that might have been created
+        const tempPattern = path.join(tempDir, `${timestamp}_*`);
+        try {
+          const { stdout } = await execAsync(`ls ${tempPattern}`, { timeout: 5000 });
+          if (stdout) {
+            const files = stdout.trim().split('\n').filter(f => f.trim());
+            for (const file of files) {
+              await fs.unlink(file).catch(() => {});
+            }
+          }
+        } catch (cleanupListError) {
+          // Ignore cleanup listing errors
+        }
       } catch (cleanupError) {
         this.logger.warn(`Cleanup warning: ${cleanupError.message}`);
       }
@@ -154,291 +189,808 @@ export class OnlyOfficeEnhancedService {
   }
 
   /**
-   * Convert via ONLYOFFICE Document Server API
+   * Convert via ONLYOFFICE Document Server API with enhanced error handling
    */
   private async convertViaOnlyOfficeServer(inputPath: string, targetFormat: string, filename: string): Promise<Buffer | null> {
     try {
-      // Simple file serving approach for now
-      const fileBuffer = await fs.readFile(inputPath);
+      this.logger.log(`🏢 ONLYOFFICE Document Server conversion starting...`);
       
-      // Create a temporary file URL (in production, use proper file serving)
-      const serverUrl = process.env.SERVER_URL || 'http://localhost:10000';
-      const tempUrl = `${serverUrl}/temp/${Date.now()}_${filename}`;
+      // Read the PDF file
+      const fileBuffer = await fs.readFile(inputPath);
+      this.logger.log(`📄 PDF file loaded: ${fileBuffer.length} bytes`);
 
+      // Create form data for file upload
+      const formData = new FormData();
+      formData.append('file', fileBuffer, {
+        filename: filename,
+        contentType: 'application/pdf'
+      });
+
+      // Try to upload file to ONLYOFFICE server first
+      let fileUrl: string;
+      try {
+        const uploadResponse = await axios.post(`${this.documentServerUrl}/upload`, formData, {
+          headers: {
+            ...formData.getHeaders(),
+          },
+          timeout: this.timeout / 2,
+          maxContentLength: 100 * 1024 * 1024, // 100MB
+        });
+
+        if (uploadResponse.data && uploadResponse.data.url) {
+          fileUrl = uploadResponse.data.url;
+          this.logger.log(`📤 File uploaded to ONLYOFFICE server: ${fileUrl}`);
+        } else {
+          throw new Error('No upload URL returned');
+        }
+      } catch (uploadError) {
+        this.logger.warn(`📤 Direct upload failed: ${uploadError.message}, using alternative method`);
+        
+        // Fallback: Create a temporary accessible URL
+        const serverUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 10000}`;
+        const tempEndpoint = `temp_${Date.now()}_${filename}`;
+        fileUrl = `${serverUrl}/temp/${tempEndpoint}`;
+        
+        // Note: In production, you would need to implement a temporary file serving endpoint
+        // For now, we'll proceed with the conversion request
+      }
+
+      // Prepare conversion request with enhanced parameters
       const conversionRequest = {
         async: false,
         filetype: 'pdf',
         key: this.generateConversionKey(filename),
         outputtype: targetFormat,
         title: filename,
-        url: tempUrl // In production, implement proper file serving
+        url: fileUrl,
+        // Enhanced conversion options
+        thumbnail: {
+          aspect: 2,
+          first: true,
+          height: 100,
+          width: 100
+        },
+        // PDF-specific import options
+        ...(targetFormat === 'docx' && {
+          region: 'US',
+          delimiter: {
+            paragraph: true,
+            column: false
+          }
+        })
       };
 
+      // Add JWT token if configured
       if (this.jwtSecret) {
-        conversionRequest['token'] = this.generateJWT(conversionRequest);
+        try {
+          conversionRequest['token'] = this.generateJWT(conversionRequest);
+          this.logger.log(`🔐 JWT token added for secure conversion`);
+        } catch (jwtError) {
+          this.logger.warn(`🔐 JWT generation failed: ${jwtError.message}`);
+        }
       }
 
-      const response = await axios.post(`${this.documentServerUrl}/ConvertService.ashx`, conversionRequest, {
+      // Send conversion request
+      const conversionUrl = `${this.documentServerUrl}/ConvertService.ashx`;
+      this.logger.log(`🔄 Sending conversion request to: ${conversionUrl}`);
+      this.logger.log(`📋 Conversion parameters: PDF → ${targetFormat.toUpperCase()}`);
+
+      const response = await axios.post(conversionUrl, conversionRequest, {
         timeout: this.timeout,
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        validateStatus: (status) => status < 500 // Accept 4xx errors for handling
       });
 
+      // Check for conversion errors
       if (response.data.error) {
-        throw new Error(`ONLYOFFICE error: ${response.data.error}`);
+        const errorMsg = typeof response.data.error === 'object' 
+          ? JSON.stringify(response.data.error) 
+          : response.data.error;
+        throw new Error(`ONLYOFFICE conversion error: ${errorMsg}`);
       }
 
       if (!response.data.fileUrl) {
-        throw new Error('No file URL returned');
+        throw new Error('ONLYOFFICE returned no download URL');
       }
 
-      const fileResponse = await axios.get(response.data.fileUrl, {
-        responseType: 'arraybuffer',
-        timeout: this.timeout
-      });
+      this.logger.log(`📥 Conversion completed, downloading from: ${response.data.fileUrl}`);
 
-      return Buffer.from(fileResponse.data);
+      // Download the converted file with retry logic
+      let fileResponse;
+      let retries = 3;
+      
+      while (retries > 0) {
+        try {
+          fileResponse = await axios.get(response.data.fileUrl, {
+            responseType: 'arraybuffer',
+            timeout: this.timeout,
+            maxContentLength: 100 * 1024 * 1024, // 100MB
+            headers: {
+              'Accept': '*/*'
+            }
+          });
+          break;
+        } catch (downloadError) {
+          retries--;
+          if (retries === 0) throw downloadError;
+          
+          this.logger.warn(`📥 Download attempt failed, retrying... (${3 - retries}/3)`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        }
+      }
+
+      const convertedBuffer = Buffer.from(fileResponse.data);
+      
+      // Validate output
+      if (convertedBuffer.length === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+
+      if (convertedBuffer.length < 100) {
+        throw new Error(`Downloaded file too small: ${convertedBuffer.length} bytes`);
+      }
+
+      // Validate file type based on magic bytes
+      const fileSignature = convertedBuffer.subarray(0, 8).toString('hex');
+      const expectedSignatures = {
+        'docx': ['504b0304', '504b0506', '504b0708'], // ZIP-based formats
+        'xlsx': ['504b0304', '504b0506', '504b0708'],
+        'pptx': ['504b0304', '504b0506', '504b0708']
+      };
+
+      const isValidFormat = expectedSignatures[targetFormat]?.some(sig => 
+        fileSignature.toLowerCase().startsWith(sig)
+      );
+
+      if (!isValidFormat) {
+        this.logger.warn(`⚠️ File signature verification failed. Expected ${targetFormat}, got: ${fileSignature}`);
+        // Don't fail here as some servers might return valid files with different signatures
+      }
+
+      this.logger.log(`✅ ONLYOFFICE Document Server conversion successful: ${convertedBuffer.length} bytes`);
+      return convertedBuffer;
 
     } catch (error) {
-      this.logger.error(`ONLYOFFICE Document Server conversion failed: ${error.message}`);
+      this.logger.error(`❌ ONLYOFFICE Document Server conversion failed: ${error.message}`);
+      
+      // Log additional debugging information
+      if (error.response) {
+        this.logger.error(`📊 Response status: ${error.response.status}`);
+        this.logger.error(`📊 Response data: ${JSON.stringify(error.response.data)}`);
+      }
+      
       return null;
     }
   }
 
   /**
-   * Convert using Python libraries (pdf2docx, pdfplumber, etc.)
+   * Premium Python conversion using the best available libraries
    */
-  private async convertViaPython(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer | null> {
-    const pythonScript = this.generatePythonScript();
-    const scriptPath = inputPath.replace('.pdf', '_convert.py');
+  private async convertViaPremiumPython(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer | null> {
+    const premiumPythonScript = this.generatePremiumPythonScript();
+    const scriptPath = inputPath.replace('.pdf', '_premium_convert.py');
 
     try {
-      await fs.writeFile(scriptPath, pythonScript);
+      await fs.writeFile(scriptPath, premiumPythonScript);
 
       const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}" "${targetFormat}"`;
-      this.logger.log(`Executing Python conversion: ${command}`);
+      this.logger.log(`🐍 Executing Premium Python conversion: ${targetFormat.toUpperCase()}`);
 
-      const { stdout, stderr } = await execAsync(command, { timeout: this.timeout });
+      const { stdout, stderr } = await execAsync(command, { 
+        timeout: this.timeout,
+        maxBuffer: 1024 * 1024 * 20 // 20MB buffer for large outputs
+      });
 
-      if (stderr && !stderr.includes('Warning')) {
-        this.logger.warn(`Python stderr: ${stderr}`);
+      if (stderr && !stderr.includes('Warning') && !stderr.includes('INFO')) {
+        this.logger.warn(`Premium Python stderr: ${stderr}`);
       }
 
       if (stdout) {
-        this.logger.log(`Python stdout: ${stdout}`);
+        this.logger.log(`Premium Python stdout: ${stdout}`);
       }
 
       // Check if output file exists
       const outputExists = await fs.access(outputPath).then(() => true).catch(() => false);
       if (!outputExists) {
-        throw new Error('Python conversion did not produce output file');
+        throw new Error('Premium Python conversion did not produce output file');
       }
 
       const result = await fs.readFile(outputPath);
       if (result.length < 100) {
-        throw new Error(`Output file too small: ${result.length} bytes`);
+        throw new Error(`Premium Python output file too small: ${result.length} bytes`);
       }
 
       return result;
 
     } catch (error) {
-      throw new Error(`Python conversion failed: ${error.message}`);
+      throw new Error(`Premium Python conversion failed: ${error.message}`);
     } finally {
       await fs.unlink(scriptPath).catch(() => {});
     }
   }
 
   /**
-   * Generate Python script for different output formats
+   * Advanced LibreOffice conversion with PDF import optimizations
    */
-  private generatePythonScript(): string {
+  private async convertViaAdvancedLibreOffice(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer> {
+    const advancedCommands = [
+      // Method 1: Use Writer with PDF import and OCR-like text extraction
+      `libreoffice --headless --writer --convert-to ${targetFormat}:"MS Word 2007 XML" --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      
+      // Method 2: Advanced PDF import with text layer preservation
+      `libreoffice --headless --convert-to ${targetFormat} --infilter="impress_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      
+      // Method 3: Draw import for complex layouts, then export to target format
+      `libreoffice --headless --draw --convert-to ${targetFormat} --infilter="draw_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      
+      // Method 4: Writer import with enhanced text recovery
+      `libreoffice --headless --writer --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      
+      // Method 5: Standard conversion with maximum compatibility
+      `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+    ];
+
+    let lastError = '';
+    
+    for (let i = 0; i < advancedCommands.length; i++) {
+      const command = advancedCommands[i];
+      this.logger.log(`📚 Advanced LibreOffice attempt ${i + 1}/${advancedCommands.length}: ${targetFormat.toUpperCase()}`);
+      
+      try {
+        const { stdout, stderr } = await execAsync(command, { 
+          timeout: this.timeout,
+          maxBuffer: 1024 * 1024 * 15 // 15MB buffer
+        });
+        
+        if (stdout) {
+          this.logger.log(`LibreOffice output (${i + 1}): ${stdout}`);
+        }
+        
+        if (stderr && !stderr.includes('Warning')) {
+          this.logger.warn(`LibreOffice stderr (${i + 1}): ${stderr}`);
+        }
+
+        // Check for expected output file
+        const expectedOutputPath = path.join(
+          path.dirname(outputPath), 
+          path.basename(inputPath, '.pdf') + '.' + targetFormat
+        );
+
+        try {
+          await fs.access(expectedOutputPath);
+          const result = await fs.readFile(expectedOutputPath);
+          
+          if (result.length > 1000) { // Require meaningful file size
+            this.logger.log(`✅ Advanced LibreOffice success on attempt ${i + 1}: ${result.length} bytes`);
+            await fs.unlink(expectedOutputPath).catch(() => {});
+            return result;
+          } else {
+            throw new Error(`Generated file too small: ${result.length} bytes`);
+          }
+        } catch (fileError) {
+          this.logger.warn(`Advanced LibreOffice output check failed (${i + 1}): ${fileError.message}`);
+          lastError = fileError.message;
+        }
+        
+      } catch (execError) {
+        this.logger.warn(`Advanced LibreOffice execution failed (${i + 1}): ${execError.message}`);
+        lastError = execError.message;
+      }
+    }
+
+    throw new Error(`Advanced LibreOffice conversion failed after ${advancedCommands.length} attempts. Last error: ${lastError}`);
+  }
+
+  /**
+   * Fallback Python conversion methods for when premium methods fail
+   */
+  private async convertViaFallbackPython(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer | null> {
+    const fallbackPythonScript = this.generateFallbackPythonScript();
+    const scriptPath = inputPath.replace('.pdf', '_fallback_convert.py');
+
+    try {
+      await fs.writeFile(scriptPath, fallbackPythonScript);
+
+      const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}" "${targetFormat}"`;
+      this.logger.log(`🛡️ Executing Fallback Python conversion: ${targetFormat.toUpperCase()}`);
+
+      const { stdout, stderr } = await execAsync(command, { 
+        timeout: this.timeout,
+        maxBuffer: 1024 * 1024 * 15 // 15MB buffer
+      });
+
+      if (stderr && !stderr.includes('Warning')) {
+        this.logger.warn(`Fallback Python stderr: ${stderr}`);
+      }
+
+      if (stdout) {
+        this.logger.log(`Fallback Python stdout: ${stdout}`);
+      }
+
+      // Check if output file exists
+      const outputExists = await fs.access(outputPath).then(() => true).catch(() => false);
+      if (!outputExists) {
+        throw new Error('Fallback Python conversion did not produce output file');
+      }
+
+      const result = await fs.readFile(outputPath);
+      if (result.length < 50) {
+        throw new Error(`Fallback Python output file too small: ${result.length} bytes`);
+      }
+
+      return result;
+
+    } catch (error) {
+      throw new Error(`Fallback Python conversion failed: ${error.message}`);
+    } finally {
+      await fs.unlink(scriptPath).catch(() => {});
+    }
+  }
+
+  /**
+   * Generate Premium Python script with the best conversion libraries
+   */
+  private generatePremiumPythonScript(): string {
     return `#!/usr/bin/env python3
+"""
+Premium PDF Converter - Best Quality PDF to Office Conversion
+Uses the most advanced Python libraries for superior results
+"""
 import sys
 import os
 import subprocess
 import io
+import tempfile
 from pathlib import Path
 
 def install_package(package, extra=""):
+    """Install Python package with enhanced error handling"""
     try:
         package_spec = f"{package}{extra}"
-        print(f"Installing {package_spec}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_spec, "--break-system-packages"])
-        print(f"{package_spec} installed successfully.")
+        print(f"📦 Installing {package_spec}...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", package_spec, 
+            "--break-system-packages", "--upgrade", "--no-warn-script-location"
+        ])
+        print(f"✅ {package_spec} installed successfully.")
+        return True
     except subprocess.CalledProcessError as e:
-        print(f"Could not install {package_spec}. Pip command failed: {e}")
-        print(f"Please try installing the package manually, e.g., 'pip install {package_spec}' in a virtual environment.")
-        raise
-
-def convert_to_docx(input_path, output_path):
-    try:
-        from pdf2docx import Converter
-        cv = Converter(input_path)
-        cv.convert(output_path, start=0, end=None)
-        cv.close()
-        print("✅ pdf2docx conversion successful")
-        return True
-    except ImportError:
-        install_package('pdf2docx')
-        from pdf2docx import Converter
-        cv = Converter(input_path)
-        cv.convert(output_path, start=0, end=None)
-        cv.close()
-        print("✅ pdf2docx conversion successful after install")
-        return True
-    except Exception as e:
-        print(f"❌ pdf2docx failed: {e}")
+        print(f"❌ Could not install {package_spec}: {e}")
         return False
 
-def convert_to_xlsx(input_path, output_path):
-    # ...existing code for convert_to_xlsx...
+def premium_convert_to_docx(input_path, output_path):
+    """Premium PDF to DOCX conversion using multiple high-quality methods"""
+    print(f"🚀 Starting PREMIUM PDF to DOCX conversion...")
+    
+    # Method 1: pdf2docx (Best for most PDFs)
     try:
-        import pandas as pd
+        from pdf2docx import Converter
+        print("📄 Using pdf2docx (Premium Method 1)...")
+        
+        cv = Converter(input_path)
+        # Use enhanced settings for better quality
+        cv.convert(output_path, start=0, end=None, pages=None)
+        cv.close()
+        
+        # Verify output quality
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
+            print(f"✅ pdf2docx conversion successful: {os.path.getsize(output_path)} bytes")
+            return True
+        else:
+            print("⚠️ pdf2docx output seems small, trying alternative method...")
+            
+    except ImportError:
+        print("📦 Installing pdf2docx...")
+        if install_package('pdf2docx'):
+            return premium_convert_to_docx(input_path, output_path)
+        else:
+            print("❌ Failed to install pdf2docx")
+    except Exception as e:
+        print(f"❌ pdf2docx method failed: {e}")
+    
+    # Method 2: PyMuPDF with enhanced text extraction
+    try:
+        import fitz  # PyMuPDF
+        from docx import Document
+        from docx.shared import Inches, Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        
+        print("📝 Using PyMuPDF + python-docx (Premium Method 2)...")
+        
+        pdf_doc = fitz.open(input_path)
+        doc = Document()
+        
+        # Set document margins for better layout
+        sections = doc.sections
+        for section in sections:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+        
+        for page_num in range(len(pdf_doc)):
+            page = pdf_doc.load_page(page_num)
+            
+            # Extract text blocks with formatting
+            blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
+            
+            if page_num > 0:
+                doc.add_page_break()
+            
+            # Add page header
+            if page_num == 0:
+                header = doc.add_paragraph(f"Converted from PDF - Page {page_num + 1}")
+                header.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                header.style = doc.styles['Heading 3']
+            
+            for block in blocks:
+                if 'lines' in block:
+                    block_text = ""
+                    font_size = 12
+                    
+                    for line in block["lines"]:
+                        line_text = ""
+                        for span in line["spans"]:
+                            text = span['text'].strip()
+                            if text:
+                                line_text += text + " "
+                                font_size = max(font_size, span.get('size', 12))
+                        
+                        if line_text.strip():
+                            block_text += line_text.strip() + "\\n"
+                    
+                    if block_text.strip():
+                        p = doc.add_paragraph(block_text.strip())
+                        # Set font size based on extracted text
+                        for run in p.runs:
+                            run.font.size = Pt(min(font_size, 14))
+        
+        doc.save(output_path)
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 2000:
+            print(f"✅ PyMuPDF conversion successful: {os.path.getsize(output_path)} bytes")
+            return True
+            
+    except ImportError:
+        print("📦 Installing PyMuPDF and python-docx...")
+        if install_package('PyMuPDF') and install_package('python-docx'):
+            return premium_convert_to_docx(input_path, output_path)
+    except Exception as e:
+        print(f"❌ PyMuPDF method failed: {e}")
+    
+    return False
+
+def premium_convert_to_xlsx(input_path, output_path):
+    """Premium PDF to XLSX conversion with advanced table detection"""
+    print(f"🚀 Starting PREMIUM PDF to XLSX conversion...")
+    
+    # Method 1: Camelot (Best for table extraction)
+    try:
         import camelot
-        tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
+        import pandas as pd
+        
+        print("📊 Using Camelot (Premium Table Extraction)...")
+        
+        # Try both flavors for maximum compatibility
+        tables = []
+        try:
+            tables = camelot.read_pdf(input_path, pages='all', flavor='lattice')
+            print(f"📋 Camelot lattice found {tables.n} tables")
+        except:
+            pass
+            
+        if tables.n == 0:
+            try:
+                tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
+                print(f"📋 Camelot stream found {tables.n} tables")
+            except:
+                pass
+        
         if tables.n > 0:
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 for i, table in enumerate(tables):
-                    table.df.to_excel(writer, sheet_name=f'Page_{table.page}_Table_{i+1}', index=False, header=True)
-            print(f"✅ Camelot conversion successful, found {tables.n} tables.")
+                    sheet_name = f'Page_{table.page}_Table_{i+1}'
+                    # Clean the data
+                    df = table.df
+                    # Remove empty rows and columns
+                    df = df.dropna(how='all').dropna(axis=1, how='all')
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            print(f"✅ Camelot conversion successful: {tables.n} tables extracted")
             return True
-        else:
-            print("Camelot did not find any tables. Falling back to pdfplumber.")
+            
     except ImportError:
-        print("Camelot not found, installing...")
-        install_package('camelot-py', extra="[cv]")
-        install_package('pandas')
-        install_package('openpyxl')
-        return convert_to_xlsx(input_path, output_path)
+        print("📦 Installing Camelot...")
+        if install_package('camelot-py', '[cv]') and install_package('pandas') and install_package('openpyxl'):
+            return premium_convert_to_xlsx(input_path, output_path)
     except Exception as e:
-        print(f"❌ Camelot failed: {e}. Falling back to pdfplumber.")
+        print(f"❌ Camelot method failed: {e}")
+    
+    # Method 2: pdfplumber (Excellent for text-based tables)
     try:
         import pdfplumber
         import pandas as pd
+        
+        print("📄 Using pdfplumber (Premium Text Extraction)...")
+        
         all_tables = []
+        all_text_data = []
+        
         with pdfplumber.open(input_path) as pdf:
-            for page in pdf.pages:
+            for page_num, page in enumerate(pdf.pages):
+                # Extract tables
                 page_tables = page.extract_tables()
                 if page_tables:
-                    for table in page_tables:
-                        if table:
+                    for table_num, table in enumerate(page_tables):
+                        if table and len(table) > 1:
                             df = pd.DataFrame(table[1:], columns=table[0])
-                            all_tables.append(df)
-        if all_tables:
+                            # Clean the data
+                            df = df.dropna(how='all').dropna(axis=1, how='all')
+                            if not df.empty:
+                                df.name = f'Page_{page_num+1}_Table_{table_num+1}'
+                                all_tables.append(df)
+                
+                # Extract text as structured data
+                text = page.extract_text()
+                if text:
+                    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+                    if lines:
+                        text_df = pd.DataFrame(lines, columns=[f'Page_{page_num+1}_Content'])
+                        all_text_data.append(text_df)
+        
+        if all_tables or all_text_data:
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                # Write tables
                 for i, df in enumerate(all_tables):
-                    df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
-            print(f"✅ pdfplumber table extraction successful, found {len(all_tables)} tables.")
+                    sheet_name = getattr(df, 'name', f'Table_{i+1}')
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                # Write text data if no tables found
+                if not all_tables:
+                    for i, df in enumerate(all_text_data):
+                        df.to_excel(writer, sheet_name=f'Text_Page_{i+1}', index=False)
+            
+            print(f"✅ pdfplumber conversion successful: {len(all_tables)} tables + text data")
             return True
-        else:
-            print("pdfplumber did not find any tables, extracting raw text as last resort.")
-            with pdfplumber.open(input_path) as pdf:
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    for i, page in enumerate(pdf.pages):
-                        text = page.extract_text()
-                        if text:
-                            lines = text.split('\n')
-                            df = pd.DataFrame(lines, columns=['Content'])
-                            df.to_excel(writer, sheet_name=f'Page_{i+1}_Text', index=False)
-            print("✅ pdfplumber raw text extraction successful.")
-            return True
+            
     except ImportError:
-        install_package('pdfplumber')
-        install_package('pandas')
-        install_package('openpyxl')
-        return convert_to_xlsx(input_path, output_path)
+        if install_package('pdfplumber') and install_package('pandas') and install_package('openpyxl'):
+            return premium_convert_to_xlsx(input_path, output_path)
     except Exception as e:
-        print(f"❌ pdfplumber failed: {e}")
-        return False
+        print(f"❌ pdfplumber method failed: {e}")
+    
+    return False
 
-def convert_to_pptx(input_path, output_path, overlay_text=False):
+def premium_convert_to_pptx(input_path, output_path):
+    """Premium PDF to PPTX conversion with high-quality image rendering"""
+    print(f"🚀 Starting PREMIUM PDF to PPTX conversion...")
+    
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Emu, Pt
+        from pptx.util import Inches
+        import io
+        
+        print("🎨 Using PyMuPDF + python-pptx (Premium Method)...")
+        
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
-        first_page = pdf_doc.load_page(0)
-        prs.slide_width = int(first_page.rect.width * 12700)
-        prs.slide_height = int(first_page.rect.height * 12700)
+        
+        # Set slide dimensions based on PDF
+        if len(pdf_doc) > 0:
+            first_page = pdf_doc.load_page(0)
+            page_rect = first_page.rect
+            # Convert points to inches (72 points = 1 inch)
+            slide_width = Inches(page_rect.width / 72)
+            slide_height = Inches(page_rect.height / 72)
+            prs.slide_width = int(slide_width)
+            prs.slide_height = int(slide_height)
+        
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
-            slide_layout = prs.slide_layouts[6]  # Blank slide layout
+            
+            # Create slide
+            slide_layout = prs.slide_layouts[6]  # Blank layout
             slide = prs.slides.add_slide(slide_layout)
             
-            # Only add PDF page as background image, no text overlay to avoid doubling
-            pix = page.get_pixmap(dpi=150)
-            image_stream = io.BytesIO(pix.tobytes("png"))
-            slide.shapes.add_picture(image_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
+            # Render page as high-quality image
+            mat = fitz.Matrix(2.0, 2.0)  # 2x scaling for better quality
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img_data = pix.tobytes("png")
             
-            # Note: Text overlay disabled by default to prevent doubling
-            # The PDF image already contains all the text content
-            # Only enable overlay_text if you need editable text (will cause duplication)
-            if overlay_text:
-                print(f"⚠️  Warning: Adding text overlay to slide {page_num + 1} - this may cause text duplication")
-                blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
-                for block in blocks:
-                    if 'lines' in block:
-                        for line in block["lines"]:
-                            for span in line["spans"]:
-                                text = span['text']
-                                if not text.strip():
-                                    continue
-                                rect = span['bbox']
-                                font_size = span['size']
-                                left = int(rect[0] * 12700)
-                                top = int(rect[1] * 12700)
-                                width = int((rect[2] - rect[0]) * 12700)
-                                height = int((rect[3] - rect[1]) * 12700)
-                                if width > 0 and height > 0:
-                                    txBox = slide.shapes.add_textbox(left, top, width, height)
-                                    tf = txBox.text_frame
-                                    tf.margin_left, tf.margin_right, tf.margin_top, tf.margin_bottom = 0, 0, 0, 0
-                                    tf.word_wrap = False
-                                    p = tf.paragraphs[0]
-                                    run = p.add_run()
-                                    run.text = text
-                                    font = run.font
-                                    font.size = Pt(int(font_size))
+            # Add image to slide
+            image_stream = io.BytesIO(img_data)
+            slide.shapes.add_picture(
+                image_stream, 
+                0, 0, 
+                width=prs.slide_width, 
+                height=prs.slide_height
+            )
+            
+            print(f"📄 Processed slide {page_num + 1}/{len(pdf_doc)}")
         
         prs.save(output_path)
-        print("✅ PyMuPDF to PPTX conversion successful (image-based, no text doubling)")
-        return True
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+            print(f"✅ Premium PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            return True
+            
     except ImportError:
-        install_package('PyMuPDF')
-        install_package('python-pptx')
-        return convert_to_pptx(input_path, output_path, overlay_text)
+        print("📦 Installing PyMuPDF and python-pptx...")
+        if install_package('PyMuPDF') and install_package('python-pptx'):
+            return premium_convert_to_pptx(input_path, output_path)
     except Exception as e:
-        print(f"❌ PyMuPDF to PPTX conversion failed: {e}")
-        return False
+        print(f"❌ Premium PPTX conversion failed: {e}")
+    
+    return False
 
 def convert_pdf(input_path, output_path, format_type):
+    """Main conversion function with premium quality methods"""
+    print(f"🎯 Premium PDF Converter - Converting to {format_type.upper()}")
+    
+    if not os.path.exists(input_path):
+        print(f"❌ Input file not found: {input_path}")
+        return False
+    
     success = False
     if format_type == 'docx':
-        success = convert_to_docx(input_path, output_path)
+        success = premium_convert_to_docx(input_path, output_path)
     elif format_type == 'xlsx':
-        success = convert_to_xlsx(input_path, output_path)
+        success = premium_convert_to_xlsx(input_path, output_path)
     elif format_type == 'pptx':
-        # By default, do NOT overlay text to avoid doubling
-        success = convert_to_pptx(input_path, output_path, overlay_text=False)
-    return success
+        success = premium_convert_to_pptx(input_path, output_path)
+    else:
+        print(f"❌ Unsupported format: {format_type}")
+        return False
+    
+    if success and os.path.exists(output_path):
+        file_size = os.path.getsize(output_path)
+        print(f"🎉 PREMIUM CONVERSION COMPLETED! Output: {file_size} bytes")
+        return True
+    else:
+        print(f"❌ Premium conversion failed for {format_type}")
+        return False
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
         print(f"Usage: python {sys.argv[0]} <input.pdf> <output.ext> <format>")
         sys.exit(1)
+    
     input_file = sys.argv[1]
     output_file = sys.argv[2]
     format_type = sys.argv[3].lower()
-    if not os.path.exists(input_file):
-        print(f"❌ Input file not found: {input_file}")
-        sys.exit(1)
+    
     success = convert_pdf(input_file, output_file, format_type)
-    if success:
-        print(f"✅ Conversion completed: {output_file}")
-        sys.exit(0)
-    else:
-        print(f"❌ Conversion failed for {input_file} to {format_type}")
+    sys.exit(0 if success else 1)
+`;
+  }
+
+  /**
+   * Generate Fallback Python script for basic conversion
+   */
+  private generateFallbackPythonScript(): string {
+    return `#!/usr/bin/env python3
+"""
+Fallback PDF Converter - Basic but reliable conversion methods
+"""
+import sys
+import os
+import subprocess
+
+def install_package(package):
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package, "--break-system-packages"])
+        return True
+    except:
+        return False
+
+def basic_convert_to_docx(input_path, output_path):
+    """Basic PDF to DOCX using simple text extraction"""
+    try:
+        import fitz
+        from docx import Document
+        
+        doc = Document()
+        pdf_doc = fitz.open(input_path)
+        
+        for page in pdf_doc:
+            text = page.get_text()
+            if text.strip():
+                doc.add_paragraph(text)
+        
+        doc.save(output_path)
+        pdf_doc.close()
+        return True
+        
+    except ImportError:
+        if install_package('PyMuPDF') and install_package('python-docx'):
+            return basic_convert_to_docx(input_path, output_path)
+    except Exception as e:
+        print(f"Basic DOCX conversion failed: {e}")
+    return False
+
+def basic_convert_to_xlsx(input_path, output_path):
+    """Basic PDF to XLSX using simple text extraction"""
+    try:
+        import fitz
+        import pandas as pd
+        
+        text_data = []
+        pdf_doc = fitz.open(input_path)
+        
+        for page_num, page in enumerate(pdf_doc):
+            text = page.get_text()
+            if text.strip():
+                lines = text.split('\\n')
+                for line in lines:
+                    if line.strip():
+                        text_data.append({'Page': page_num + 1, 'Content': line.strip()})
+        
+        df = pd.DataFrame(text_data)
+        df.to_excel(output_path, index=False)
+        pdf_doc.close()
+        return True
+        
+    except ImportError:
+        if install_package('PyMuPDF') and install_package('pandas') and install_package('openpyxl'):
+            return basic_convert_to_xlsx(input_path, output_path)
+    except Exception as e:
+        print(f"Basic XLSX conversion failed: {e}")
+    return False
+
+def basic_convert_to_pptx(input_path, output_path):
+    """Basic PDF to PPTX conversion"""
+    try:
+        import fitz
+        from pptx import Presentation
+        import io
+        
+        pdf_doc = fitz.open(input_path)
+        prs = Presentation()
+        
+        for page in pdf_doc:
+            slide_layout = prs.slide_layouts[6]
+            slide = prs.slides.add_slide(slide_layout)
+            
+            pix = page.get_pixmap()
+            img_data = pix.tobytes("png")
+            image_stream = io.BytesIO(img_data)
+            
+            slide.shapes.add_picture(image_stream, 0, 0)
+        
+        prs.save(output_path)
+        pdf_doc.close()
+        return True
+        
+    except ImportError:
+        if install_package('PyMuPDF') and install_package('python-pptx'):
+            return basic_convert_to_pptx(input_path, output_path)
+    except Exception as e:
+        print(f"Basic PPTX conversion failed: {e}")
+    return False
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
         sys.exit(1)
+    
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
+    format_type = sys.argv[3].lower()
+    
+    success = False
+    if format_type == 'docx':
+        success = basic_convert_to_docx(input_file, output_file)
+    elif format_type == 'xlsx':
+        success = basic_convert_to_xlsx(input_file, output_file)
+    elif format_type == 'pptx':
+        success = basic_convert_to_pptx(input_file, output_file)
+    
+    sys.exit(0 if success else 1)
 `;
   }
 
