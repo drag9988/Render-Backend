@@ -87,8 +87,10 @@ export class AppService {
           return await this.onlyOfficeService.convertPdfToPptx(file.buffer, file.originalname);
         }
       } catch (onlyOfficeError) {
-        this.logger.warn(`Original ONLYOFFICE service failed for ${file.originalname}: ${onlyOfficeError.message}.`);
+        this.logger.warn(`Original ONLYOFFICE service failed for ${file.originalname}: ${onlyOfficeError.message}. Trying ConvertAPI.`);
       }
+    } else {
+      this.logger.log('Original ONLYOFFICE service not available, trying ConvertAPI backup.');
     }
 
     // Tertiary: Use ConvertAPI as backup (only if both ONLYOFFICE methods fail)

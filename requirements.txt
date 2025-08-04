@@ -1,0 +1,23 @@
+# Enhanced ONLYOFFICE Service Python Dependencies
+# These packages will be automatically installed when needed
+
+# PDF to Word conversion
+pdf2docx>=0.5.6
+
+# PDF text and table extraction
+pdfplumber>=0.9.0
+
+# Word document creation
+python-docx>=0.8.11
+
+# Excel file handling
+pandas>=1.5.0
+openpyxl>=3.0.10
+
+# PowerPoint creation
+python-pptx>=0.6.21
+
+# Additional utilities
+Pillow>=9.0.0  # Image processing
+PyPDF2>=3.0.0  # PDF manipulation
+reportlab>=3.6.0  # PDF creation

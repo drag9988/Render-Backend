@@ -12,7 +12,9 @@
     "build:prod": "npm run build && npm run install:python-deps",
     "install:python-deps": "python3 -m pip install pdf2docx pdfplumber python-docx pandas python-pptx openpyxl || echo 'Python dependencies installation failed - will install on demand'",
     "healthcheck": "curl -f http://0.0.0.0:${PORT:-3000}/health || exit 1",
-    "test:onlyoffice": "curl -s http://localhost:${PORT:-10000}/onlyoffice/enhanced-status | jq ."
+    "test:onlyoffice": "curl -s http://localhost:${PORT:-10000}/onlyoffice/enhanced-status | jq .",
+    "verify:setup": "node verify-enhanced-setup.js",
+    "test:setup": "bash test-onlyoffice-setup.sh"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

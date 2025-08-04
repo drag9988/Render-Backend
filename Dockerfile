@@ -14,11 +14,17 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-eng \
     python3 \
     python3-pip \
+    python3-dev \
+    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
+
+# Copy Python requirements and install them first (for better caching)
+COPY requirements.txt ./
+RUN python3 -m pip install --no-cache-dir -r requirements.txt || echo "Some Python packages failed to install - will install on demand"
 
 # Copy package files
 COPY package*.json ./

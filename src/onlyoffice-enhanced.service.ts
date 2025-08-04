@@ -95,6 +95,16 @@ export class OnlyOfficeEnhancedService {
     try {
       this.logger.log(`Starting enhanced PDF to ${targetFormat.toUpperCase()} conversion for: ${filename}`);
 
+      // Ensure temp directory exists and is writable
+      try {
+        await fs.mkdir(tempDir, { recursive: true });
+        await fs.chmod(tempDir, 0o777);
+        this.logger.log(`Successfully ensured temp directory exists: ${tempDir}`);
+      } catch (dirError) {
+        this.logger.error(`Failed to create temp directory ${tempDir}: ${dirError.message}`);
+        throw new Error(`Cannot create or access temp directory: ${dirError.message}`);
+      }
+
       // Write PDF to temp file
       await fs.writeFile(tempInputPath, pdfBuffer);
 
@@ -198,13 +208,17 @@ export class OnlyOfficeEnhancedService {
    * Convert using Python libraries (pdf2docx, pdfplumber, etc.)
    */
   private async convertViaPython(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer | null> {
+    const tempDir = path.dirname(inputPath);
     const pythonScript = this.generatePythonScript(targetFormat);
-    const scriptPath = inputPath.replace('.pdf', '_convert.py');
+    const scriptPath = path.join(tempDir, `${Date.now()}_convert.py`);
 
     try {
+      // Ensure script directory exists
+      await fs.mkdir(tempDir, { recursive: true });
+      
       await fs.writeFile(scriptPath, pythonScript);
 
-      const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}"`;
+      const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}" "${targetFormat}"`;
       this.logger.log(`Executing Python conversion: ${command}`);
 
       const { stdout, stderr } = await execAsync(command, { timeout: this.timeout });
@@ -416,13 +430,13 @@ def convert_pdf(input_path, output_path, format_type):
         return False
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python script.py input.pdf output.${targetFormat}")
+    if len(sys.argv) != 4:
+        print("Usage: python script.py input.pdf output.${targetFormat} format_type")
         sys.exit(1)
     
     input_file = sys.argv[1]
     output_file = sys.argv[2]
-    format_type = "${targetFormat}"
+    format_type = sys.argv[3]
     
     if not os.path.exists(input_file):
         print(f"❌ Input file not found: {input_file}")
@@ -444,19 +458,24 @@ if __name__ == "__main__":
    * Enhanced LibreOffice conversion with specialized options
    */
   private async convertViaEnhancedLibreOffice(inputPath: string, outputPath: string, targetFormat: string): Promise<Buffer> {
+    const tempDir = path.dirname(inputPath);
+    
+    // Ensure output directory exists
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    
     const commands = [
       // Method 1: Specialized conversion based on target format
       targetFormat === 'docx' 
-        ? `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --writer --convert-to docx:"MS Word 2007 XML" --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+        ? `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --writer --convert-to docx:"MS Word 2007 XML" --infilter="writer_pdf_import" --outdir "${tempDir}" "${inputPath}"`
         : targetFormat === 'xlsx'
-        ? `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --calc --convert-to xlsx:"Calc MS Excel 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`
-        : `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --impress --convert-to pptx:"MS PowerPoint 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+        ? `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --calc --convert-to xlsx:"Calc MS Excel 2007 XML" --outdir "${tempDir}" "${inputPath}"`
+        : `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --impress --convert-to pptx:"MS PowerPoint 2007 XML" --outdir "${tempDir}" "${inputPath}"`,
       
       // Method 2: Enhanced standard conversion
-      `libreoffice --headless --convert-to ${targetFormat} --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      `libreoffice --headless --convert-to ${targetFormat} --infilter="writer_pdf_import" --outdir "${tempDir}" "${inputPath}"`,
       
       // Method 3: Alternative approach
-      `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
+      `libreoffice --headless --convert-to ${targetFormat} --outdir "${tempDir}" "${inputPath}"`,
     ];
 
     let lastError = '';
@@ -481,7 +500,7 @@ if __name__ == "__main__":
 
         // Check for expected output file
         const expectedOutputPath = path.join(
-          path.dirname(outputPath), 
+          tempDir, 
           path.basename(inputPath, '.pdf') + '.' + targetFormat
         );
 
