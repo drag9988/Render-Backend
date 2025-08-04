@@ -61,28 +61,18 @@ export class AppService {
     if (this.convertApiService.isAvailable()) {
       try {
         this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using ConvertAPI`);
-        
-        let result: Buffer;
-        switch (format) {
-          case 'docx':
-            result = await this.convertApiService.convertPdfToDocx(file.buffer, file.originalname);
-            break;
-          case 'xlsx':
-            result = await this.convertApiService.convertPdfToXlsx(file.buffer, file.originalname);
-            break;
-          case 'pptx':
-            result = await this.convertApiService.convertPdfToPptx(file.buffer, file.originalname);
-            break;
-          default:
-            throw new Error(`Unsupported format: ${format}`);
+        if (format === 'docx') {
+          return await this.convertApiService.convertPdfToDocx(file.buffer, file.originalname);
+        } else if (format === 'xlsx') {
+          return await this.convertApiService.convertPdfToXlsx(file.buffer, file.originalname);
+        } else if (format === 'pptx') {
+          return await this.convertApiService.convertPdfToPptx(file.buffer, file.originalname);
         }
-
-        this.logger.log(`ConvertAPI conversion successful for ${file.originalname} to ${format.toUpperCase()}`);
-        return result;
-
       } catch (convertApiError) {
         this.logger.warn(`ConvertAPI failed for ${file.originalname}: ${convertApiError.message}. Falling back to LibreOffice.`);
-        // Continue to LibreOffice fallback
+        if (convertApiError.message && (convertApiError.message.includes('401') || convertApiError.message.includes('authentication failed'))) {
+            throw new BadRequestException('ConvertAPI authentication failed. Please check if the API key is valid and the plan is active.');
+        }
       }
     } else {
       this.logger.log('ConvertAPI not available, using LibreOffice directly');
@@ -762,23 +752,25 @@ def main():
         f'pdftk "{input_file}" output "{output_file}" user_pw "{password}" owner_pw "{password}"',
         # LibreOffice with basic export (limited password support)
         f'libreoffice --headless --convert-to pdf --outdir ${tempDir} "{input_file}" && mv "${tempInput.replace('.pdf', '')}.pdf" "{output_file}"'
-    ]
+    ];
     
     for i, cmd in enumerate(methods):
         try:
             print(f"Trying method {i+1}: {cmd.split()[0]}")
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-            if result.returncode == 0 and os.path.exists(output_file):
-                print(f"Success with method {i+1}")
-                sys.exit(0)
-            else:
-                print(f"Method {i+1} failed: {result.stderr}")
-        except Exception as e:
-            print(f"Method {i+1} error: {e}")
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60);
+            if (result.returncode == 0 && os.path.exists(output_file)) {
+                print(f"Success with method {i+1}");
+                sys.exit(0);
+            } else {
+                print(f"Method {i+1} failed: {result.stderr}");
+            }
+        } catch (Exception as e) {
+            print(f"Method {i+1} error: {e}");
+        }
     
-    # Final fallback: just copy the file
-    print("All methods failed, creating unprotected copy")
-    shutil.copy2(input_file, output_file)
+    // Final fallback: just copy the file
+    print("All methods failed, creating unprotected copy");
+    shutil.copy2(input_file, output_file);
 
 if __name__ == "__main__":
     main()
