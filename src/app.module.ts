@@ -3,7 +3,6 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConvertApiService } from './convertapi.service';
 import { OnlyOfficeService } from './onlyoffice.service';
 import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
@@ -31,7 +30,6 @@ import { FileValidationService } from './file-validation.service';
   controllers: [AppController],
   providers: [
     AppService,
-    ConvertApiService,
     OnlyOfficeService,
     OnlyOfficeEnhancedService, // Add enhanced service
     FileValidationService,
