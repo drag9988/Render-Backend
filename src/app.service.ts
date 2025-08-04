@@ -4,6 +4,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as multer from 'multer';
 import { ConvertApiService } from './convertapi.service';
+import { OnlyOfficeService } from './onlyoffice.service';
+import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
 
 @Injectable()
@@ -13,6 +15,8 @@ export class AppService {
 
   constructor(
     private readonly convertApiService: ConvertApiService,
+    private readonly onlyOfficeService: OnlyOfficeService,
+    private readonly onlyOfficeEnhancedService: OnlyOfficeEnhancedService,
     private readonly fileValidationService: FileValidationService
   ) {}
 
@@ -55,12 +59,42 @@ export class AppService {
   }
 
   private async convertPdfToOfficeFormat(file: Express.Multer.File, format: string): Promise<Buffer> {
-    this.logger.log(`Converting PDF to ${format.toUpperCase()} - trying ConvertAPI first, then LibreOffice fallback`);
+    this.logger.log(`Converting PDF to ${format.toUpperCase()} - using Enhanced ONLYOFFICE Service for premium quality`);
 
-    // Try ConvertAPI first if available
+    // Primary: Use Enhanced ONLYOFFICE Service (includes Python + LibreOffice + ONLYOFFICE Server)
+    try {
+      this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using Enhanced ONLYOFFICE Service`);
+      if (format === 'docx') {
+        return await this.onlyOfficeEnhancedService.convertPdfToDocx(file.buffer, file.originalname);
+      } else if (format === 'xlsx') {
+        return await this.onlyOfficeEnhancedService.convertPdfToXlsx(file.buffer, file.originalname);
+      } else if (format === 'pptx') {
+        return await this.onlyOfficeEnhancedService.convertPdfToPptx(file.buffer, file.originalname);
+      }
+    } catch (enhancedError) {
+      this.logger.warn(`Enhanced ONLYOFFICE Service failed for ${file.originalname}: ${enhancedError.message}. Trying backup methods.`);
+    }
+
+    // Secondary: Use original ONLYOFFICE service as backup
+    if (this.onlyOfficeService.isAvailable()) {
+      try {
+        this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using original ONLYOFFICE service`);
+        if (format === 'docx') {
+          return await this.onlyOfficeService.convertPdfToDocx(file.buffer, file.originalname);
+        } else if (format === 'xlsx') {
+          return await this.onlyOfficeService.convertPdfToXlsx(file.buffer, file.originalname);
+        } else if (format === 'pptx') {
+          return await this.onlyOfficeService.convertPdfToPptx(file.buffer, file.originalname);
+        }
+      } catch (onlyOfficeError) {
+        this.logger.warn(`Original ONLYOFFICE service failed for ${file.originalname}: ${onlyOfficeError.message}.`);
+      }
+    }
+
+    // Tertiary: Use ConvertAPI as backup (only if both ONLYOFFICE methods fail)
     if (this.convertApiService.isAvailable()) {
       try {
-        this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using ConvertAPI`);
+        this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using ConvertAPI as backup`);
         if (format === 'docx') {
           return await this.convertApiService.convertPdfToDocx(file.buffer, file.originalname);
         } else if (format === 'xlsx') {
@@ -69,16 +103,18 @@ export class AppService {
           return await this.convertApiService.convertPdfToPptx(file.buffer, file.originalname);
         }
       } catch (convertApiError) {
-        this.logger.warn(`ConvertAPI failed for ${file.originalname}: ${convertApiError.message}. Falling back to LibreOffice.`);
+        this.logger.warn(`ConvertAPI backup failed for ${file.originalname}: ${convertApiError.message}. Using LibreOffice as final fallback.`);
+        // Don't throw authentication errors anymore since ONLYOFFICE is primary
         if (convertApiError.message && (convertApiError.message.includes('401') || convertApiError.message.includes('authentication failed'))) {
-            throw new BadRequestException('ConvertAPI authentication failed. Please check if the API key is valid and the plan is active.');
+          this.logger.warn('ConvertAPI authentication issue detected. Consider using ONLYOFFICE Document Server for better reliability.');
         }
       }
     } else {
-      this.logger.log('ConvertAPI not available, using LibreOffice directly');
+      this.logger.log('ConvertAPI not available as backup. Using LibreOffice directly.');
     }
 
-    // Fallback to LibreOffice
+    // Final fallback: LibreOffice (always available)
+    this.logger.log(`Using LibreOffice as final conversion method for ${format.toUpperCase()}`);
     return await this.executeLibreOfficeConversion(file, format);
   }
 
@@ -878,6 +914,61 @@ if __name__ == "__main__":
       this.logger.error(`Failed to get ConvertAPI status: ${error.message}`);
       return {
         available: true,
+        healthy: false
+      };
+    }
+  }
+
+  // ONLYOFFICE-related methods
+  async getOnlyOfficeStatus(): Promise<{available: boolean, healthy?: boolean, serverInfo?: any}> {
+    if (!this.onlyOfficeService.isAvailable()) {
+      return { available: false };
+    }
+
+    try {
+      const [healthy, serverInfo] = await Promise.all([
+        this.onlyOfficeService.healthCheck(),
+        this.onlyOfficeService.getServerInfo()
+      ]);
+
+      return {
+        available: true,
+        healthy,
+        serverInfo
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get ONLYOFFICE status: ${error.message}`);
+      return {
+        available: true,
+        healthy: false
+      };
+    }
+  }
+
+  // Enhanced ONLYOFFICE-related methods
+  async getEnhancedOnlyOfficeStatus(): Promise<{available: boolean, healthy?: boolean, serverInfo?: any, capabilities?: any}> {
+    try {
+      const [healthy, serverInfo] = await Promise.all([
+        this.onlyOfficeEnhancedService.healthCheck(),
+        this.onlyOfficeEnhancedService.getServerInfo()
+      ]);
+
+      return {
+        available: true,
+        healthy,
+        serverInfo,
+        capabilities: {
+          onlyofficeServer: serverInfo.onlyofficeServer.available,
+          python: serverInfo.python.available,
+          libreoffice: serverInfo.libreoffice.available,
+          multipleConversionMethods: true,
+          supportedFormats: ['docx', 'xlsx', 'pptx']
+        }
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get Enhanced ONLYOFFICE status: ${error.message}`);
+      return {
+        available: false,
         healthy: false
       };
     }

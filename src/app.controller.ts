@@ -697,6 +697,45 @@ export class AppController {
     }
   }
 
+  // ONLYOFFICE status endpoint
+  @Get('onlyoffice/status')
+  @SkipThrottle() // No rate limiting for status checks
+  async getOnlyOfficeStatus(@Res() res: Response) {
+    try {
+      const status = await this.appService.getOnlyOfficeStatus();
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        onlyoffice: status
+      });
+    } catch (error) {
+      console.error('ONLYOFFICE status check error:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to check ONLYOFFICE status', 
+        message: error.message 
+      });
+    }
+  }
+
+  // Enhanced ONLYOFFICE status endpoint with detailed info
+  @Get('onlyoffice/enhanced-status')
+  @SkipThrottle() // No rate limiting for status checks
+  async getEnhancedOnlyOfficeStatus(@Res() res: Response) {
+    try {
+      const status = await this.appService.getEnhancedOnlyOfficeStatus();
+      return res.status(200).json({
+        timestamp: new Date().toISOString(),
+        service: 'ONLYOFFICE Enhanced Service',
+        status: status
+      });
+    } catch (error) {
+      console.error('Enhanced ONLYOFFICE status check error:', error.message);
+      return res.status(500).json({ 
+        error: 'Failed to check Enhanced ONLYOFFICE status', 
+        message: error.message 
+      });
+    }
+  }
+
   // PDF password protection
   @Post('add-password-to-pdf')
   @Throttle({ default: { limit: 10, ttl: 86400000 } }) // 10 requests per day for password protection

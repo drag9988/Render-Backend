@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  # ONLYOFFICE Document Server (Community Edition) - Simple setup
+  onlyoffice-documentserver:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice-documentserver-dev
+    ports:
+      - "8000:80"
+    environment:
+      # Disable JWT for development (enable in production)
+      - JWT_ENABLED=false
+      # Use internal database and cache for simplicity
+      - USE_UNAUTHORIZED_STORAGE=true
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+    restart: unless-stopped
+
+volumes:
+  onlyoffice_data:
+    driver: local
+  onlyoffice_logs:
+    driver: local

@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  # Your existing PDF converter backend
+  pdf-converter-backend:
+    build: .
+    ports:
+      - "10000:10000"
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=10000
+      - ONLYOFFICE_DOCUMENT_SERVER_URL=http://onlyoffice-documentserver
+      - ONLYOFFICE_TIMEOUT=120000
+      - ONLYOFFICE_JWT_SECRET=your-jwt-secret-here
+      - TEMP_DIR=/tmp/pdf-converter
+    depends_on:
+      - onlyoffice-documentserver
+    volumes:
+      - /tmp:/tmp
+    networks:
+      - pdf-converter-network
+
+  # ONLYOFFICE Document Server (Community Edition)
+  onlyoffice-documentserver:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice-documentserver
+    ports:
+      - "8000:80"
+    environment:
+      # Disable JWT for development (enable in production)
+      - JWT_ENABLED=false
+      - JWT_SECRET=your-jwt-secret-here
+      # Database settings (optional - uses internal DB by default)
+      - DB_TYPE=mysql
+      - DB_HOST=onlyoffice-mysql
+      - DB_PORT=3306
+      - DB_NAME=onlyoffice
+      - DB_USER=onlyoffice
+      - DB_PWD=onlyoffice_password
+      # Redis settings (optional - uses internal cache by default)
+      - REDIS_SERVER_HOST=onlyoffice-redis
+      - REDIS_SERVER_PORT=6379
+      # Performance settings
+      - NGINX_WORKER_PROCESSES=auto
+      - NGINX_WORKER_CONNECTIONS=4096
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+      - onlyoffice_cache:/var/lib/onlyoffice/documentserver/App_Data/cache/files
+      - onlyoffice_fonts:/usr/share/fonts
+    networks:
+      - pdf-converter-network
+    depends_on:
+      - onlyoffice-mysql
+      - onlyoffice-redis
+
+  # MySQL for ONLYOFFICE (optional - for production use)
+  onlyoffice-mysql:
+    image: mysql:8.0
+    container_name: onlyoffice-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=onlyoffice
+      - MYSQL_USER=onlyoffice
+      - MYSQL_PASSWORD=onlyoffice_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - pdf-converter-network
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis for ONLYOFFICE (optional - for production use)
+  onlyoffice-redis:
+    image: redis:7-alpine
+    container_name: onlyoffice-redis
+    volumes:
+      - redis_data:/data
+    networks:
+      - pdf-converter-network
+
+volumes:
+  onlyoffice_data:
+    driver: local
+  onlyoffice_logs:
+    driver: local
+  onlyoffice_cache:
+    driver: local
+  onlyoffice_fonts:
+    driver: local
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  pdf-converter-network:
+    driver: bridge

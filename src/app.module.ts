@@ -4,6 +4,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConvertApiService } from './convertapi.service';
+import { OnlyOfficeService } from './onlyoffice.service';
+import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
 
 @Module({
@@ -12,17 +14,17 @@ import { FileValidationService } from './file-validation.service';
       {
         name: 'short',
         ttl: 60000, // 1 minute
-        limit: 10, // 10 requests per minute for general endpoints
+        limit: 15, // Increased limit for better UX with ONLYOFFICE
       },
       {
         name: 'daily-pdf-conversion',
         ttl: 86400000, // 24 hours (1 day)
-        limit: 5, // 5 requests per day for PDF conversions
+        limit: 50, // Increased for ONLYOFFICE usage
       },
       {
         name: 'medium',
         ttl: 900000, // 15 minutes
-        limit: 20, // 20 requests per 15 minutes for other operations
+        limit: 30, // Increased for better performance
       }
     ])
   ],
@@ -30,6 +32,8 @@ import { FileValidationService } from './file-validation.service';
   providers: [
     AppService,
     ConvertApiService,
+    OnlyOfficeService,
+    OnlyOfficeEnhancedService, // Add enhanced service
     FileValidationService,
     {
       provide: APP_GUARD,
