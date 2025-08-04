@@ -1,44 +1,28 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConvertApiService } from './convertapi.service';
 import { OnlyOfficeService } from './onlyoffice.service';
 import { OnlyOfficeEnhancedService } from './onlyoffice-enhanced.service';
 import { FileValidationService } from './file-validation.service';
+import { SecurityService } from './security.service';
+import { DiagnosticService } from './diagnostic.service';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
-    ThrottlerModule.forRoot([
-      {
-        name: 'short',
-        ttl: 60000, // 1 minute
-        limit: 15, // Increased limit for better UX with ONLYOFFICE
-      },
-      {
-        name: 'daily-pdf-conversion',
-        ttl: 86400000, // 24 hours (1 day)
-        limit: 50, // Increased for ONLYOFFICE usage
-      },
-      {
-        name: 'medium',
-        ttl: 900000, // 15 minutes
-        limit: 30, // Increased for better performance
-      }
-    ])
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    ConvertApiService,
     OnlyOfficeService,
-    OnlyOfficeEnhancedService, // Add enhanced service
+    OnlyOfficeEnhancedService,
     FileValidationService,
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
+    SecurityService,
+    DiagnosticService,
   ],
 })
 export class AppModule {}

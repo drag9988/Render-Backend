@@ -256,12 +256,12 @@ def install_package(package, extra=""):
         # Use --break-system-packages to handle externally managed environments (PEP 668)
         # This is generally safe in a containerized/isolated environment.
         package_spec = f"{package}{extra}"
-        print(f"Installing {package_spec}...");
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_spec, "--break-system-packages"]);
-        print(f"{package_spec} installed successfully.");
+        print(f"Installing {package_spec}...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_spec, "--break-system-packages"])
+        print(f"{package_spec} installed successfully.")
     except subprocess.CalledProcessError as e:
-        print(f"Could not install {package_spec}. Pip command failed: {e}");
-        print(f"Please try installing the package manually, e.g., 'pip install {package_spec}' in a virtual environment.");
+        print(f"Could not install {package_spec}. Pip command failed: {e}")
+        print(f"Please try installing the package manually, e.g., 'pip install {package_spec}' in a virtual environment.")
         raise
 
 def convert_to_docx(input_path, output_path):
@@ -292,11 +292,10 @@ def convert_to_xlsx(input_path, output_path):
         import camelot
         
         # Use 'stream' for PDFs without clear table lines, 'lattice' for tables with lines.
-        # Stream is often a good general-purpose starting point.
         tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
         
         if tables.n > 0:
-            with pd.ExcelWriter(output_path) as writer:
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 for i, table in enumerate(tables):
                     table.df.to_excel(writer, sheet_name=f'Page_{table.page}_Table_{i+1}', index=False, header=True)
             print(f"✅ Camelot conversion successful, found {tables.n} tables.")
@@ -307,15 +306,9 @@ def convert_to_xlsx(input_path, output_path):
     } catch (ImportError) {
         print("Camelot not found, installing...")
         install_package('camelot-py', extra="[cv]")
-        import pandas as pd
-        import camelot
-        tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
-        if tables.n > 0:
-            with pd.ExcelWriter(output_path) as writer:
-                for i, table in enumerate(tables):
-                    table.df.to_excel(writer, sheet_name=f'Page_{table.page}_Table_{i+1}', index=False, header=True)
-            print(f"✅ Camelot conversion successful after install, found {tables.n} tables.")
-            return True
+        install_package('pandas')
+        install_package('openpyxl')
+        return convert_to_xlsx(input_path, output_path) # Retry
     } catch (Exception e) {
         print(f"❌ Camelot failed: {e}. Falling back to pdfplumber.")
     }
@@ -336,7 +329,7 @@ def convert_to_xlsx(input_path, output_path):
                             all_tables.append(df)
         
         if all_tables:
-            with pd.ExcelWriter(output_path) as writer:
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 for i, df in enumerate(all_tables):
                     df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
             print(f"✅ pdfplumber table extraction successful, found {len(all_tables)} tables.")
@@ -345,7 +338,7 @@ def convert_to_xlsx(input_path, output_path):
             print("pdfplumber did not find any tables, extracting raw text as last resort.");
             # If no tables, extract raw text per page
             with pdfplumber.open(input_path) as pdf:
-                with pd.ExcelWriter(output_path) as writer:
+                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                     for i, page in enumerate(pdf.pages):
                         text = page.extract_text()
                         if text:
@@ -370,15 +363,15 @@ def convert_to_pptx(input_path, output_path):
     try {
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Emu
+        from pptx.util import Emu, Pt
 
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
         
         # Use dimensions of the first page for the presentation
         first_page = pdf_doc.load_page(0)
-        prs.slide_width = Emu(first_page.rect.width)
-        prs.slide_height = Emu(first_page.rect.height)
+        prs.slide_width = int(first_page.rect.width * 12700) # Convert points to EMUs
+        prs.slide_height = int(first_page.rect.height * 12700)
 
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
@@ -392,10 +385,10 @@ def convert_to_pptx(input_path, output_path):
 
             # Overlay extracted text for editability
             blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
-            for block in blocks.get("blocks", []):
-                if block['type'] == 0:  # Text block
-                    for line in block.get("lines", []):
-                        for span in line.get("spans", []):
+            for block in blocks:
+                if 'lines' in block:
+                    for line in block["lines"]:
+                        for span in line["spans"]:
                             text = span['text']
                             if not text.strip():
                                 continue
@@ -403,20 +396,22 @@ def convert_to_pptx(input_path, output_path):
                             rect = span['bbox']
                             font_size = span['size']
                             
-                            left = Emu(rect[0])
-                            top = Emu(rect[1])
-                            width = Emu(rect[2] - rect[0])
-                            height = Emu(rect[3] - rect[1])
+                            left = int(rect[0] * 12700)
+                            top = int(rect[1] * 12700)
+                            width = int((rect[2] - rect[0]) * 12700)
+                            height = int((rect[3] - rect[1]) * 12700)
                             
                             if width > 0 and height > 0:
                                 txBox = slide.shapes.add_textbox(left, top, width, height)
                                 tf = txBox.text_frame
-                                tf.text = text
+                                tf.margin_left, tf.margin_right, tf.margin_top, tf.margin_bottom = 0, 0, 0, 0
+                                tf.word_wrap = False
+                                
                                 p = tf.paragraphs[0]
-                                run = p.runs[0]
-                                font = run.font
-                                # Approximate font size. Pt to Emu is not direct, this is a heuristic.
-                                font.size = Emu(font_size * 0.95) 
+                                run = p.add_run();
+                                run.text = text;
+                                font = run.font;
+                                font.size = Pt(int(font_size));
 
         prs.save(output_path)
         print("✅ PyMuPDF to PPTX conversion successful")
@@ -425,7 +420,7 @@ def convert_to_pptx(input_path, output_path):
     } catch (ImportError) {
         install_package('PyMuPDF')
         install_package('python-pptx')
-        return convert_to_pptx(input_path, output_path) # Retry after install
+        return convert_to_pptx(input_path, output_path) # Retry
     } catch (Exception e) {
         print(f"❌ PyMuPDF to PPTX conversion failed: {e}")
         return False
