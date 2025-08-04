@@ -260,8 +260,6 @@ from pathlib import Path
 
 def install_package(package, extra=""):
     try:
-        # Use --break-system-packages to handle externally managed environments (PEP 668)
-        # This is generally safe in a containerized/isolated environment.
         package_spec = f"{package}{extra}"
         print(f"Installing {package_spec}...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", package_spec, "--break-system-packages"])
@@ -292,14 +290,11 @@ def convert_to_docx(input_path, output_path):
         return False
 
 def convert_to_xlsx(input_path, output_path):
-    # Method 1: Try Camelot for structured tables
+    # ...existing code for convert_to_xlsx...
     try:
         import pandas as pd
         import camelot
-        
-        # Use 'stream' for PDFs without clear table lines, 'lattice' for tables with lines.
         tables = camelot.read_pdf(input_path, pages='all', flavor='stream')
-        
         if tables.n > 0:
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 for i, table in enumerate(tables):
@@ -308,21 +303,17 @@ def convert_to_xlsx(input_path, output_path):
             return True
         else:
             print("Camelot did not find any tables. Falling back to pdfplumber.")
-            
     except ImportError:
         print("Camelot not found, installing...")
         install_package('camelot-py', extra="[cv]")
         install_package('pandas')
         install_package('openpyxl')
-        return convert_to_xlsx(input_path, output_path) # Retry
+        return convert_to_xlsx(input_path, output_path)
     except Exception as e:
         print(f"❌ Camelot failed: {e}. Falling back to pdfplumber.")
-
-    # Method 2: Fallback to pdfplumber for table extraction
     try:
         import pdfplumber
         import pandas as pd
-
         all_tables = []
         with pdfplumber.open(input_path) as pdf:
             for page in pdf.pages:
@@ -332,7 +323,6 @@ def convert_to_xlsx(input_path, output_path):
                         if table:
                             df = pd.DataFrame(table[1:], columns=table[0])
                             all_tables.append(df)
-        
         if all_tables:
             with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                 for i, df in enumerate(all_tables):
@@ -341,93 +331,82 @@ def convert_to_xlsx(input_path, output_path):
             return True
         else:
             print("pdfplumber did not find any tables, extracting raw text as last resort.")
-            # If no tables, extract raw text per page
             with pdfplumber.open(input_path) as pdf:
                 with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                     for i, page in enumerate(pdf.pages):
                         text = page.extract_text()
                         if text:
-                            lines = text.split('\\n')
+                            lines = text.split('\n')
                             df = pd.DataFrame(lines, columns=['Content'])
                             df.to_excel(writer, sheet_name=f'Page_{i+1}_Text', index=False)
             print("✅ pdfplumber raw text extraction successful.")
             return True
-
     except ImportError:
         install_package('pdfplumber')
         install_package('pandas')
         install_package('openpyxl')
-        return convert_to_xlsx(input_path, output_path) # Retry after install
+        return convert_to_xlsx(input_path, output_path)
     except Exception as e:
         print(f"❌ pdfplumber failed: {e}")
         return False
 
-def convert_to_pptx(input_path, output_path):
+def convert_to_pptx(input_path, output_path, overlay_text=False):
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
         from pptx.util import Emu, Pt
-
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
-        
-        # Use dimensions of the first page for the presentation
         first_page = pdf_doc.load_page(0)
-        prs.slide_width = int(first_page.rect.width * 12700) # Convert points to EMUs
+        prs.slide_width = int(first_page.rect.width * 12700)
         prs.slide_height = int(first_page.rect.height * 12700)
-
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
-            slide_layout = prs.slide_layouts[6]  # Index 6 is a blank slide
+            slide_layout = prs.slide_layouts[6]  # Blank slide layout
             slide = prs.slides.add_slide(slide_layout)
-
-            # Option 1: Extract text only (editable, no background image to avoid duplication)
-            blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
-            text_added = False
             
-            for block in blocks:
-                if 'lines' in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            text = span['text']
-                            if not text.strip():
-                                continue
-
-                            rect = span['bbox']
-                            font_size = span['size']
-                            
-                            left = int(rect[0] * 12700)
-                            top = int(rect[1] * 12700)
-                            width = int((rect[2] - rect[0]) * 12700)
-                            height = int((rect[3] - rect[1]) * 12700)
-                            
-                            if width > 0 and height > 0:
-                                txBox = slide.shapes.add_textbox(left, top, width, height)
-                                tf = txBox.text_frame
-                                tf.margin_left, tf.margin_right, tf.margin_top, tf.margin_bottom = 0, 0, 0, 0
-                                tf.word_wrap = False
-                                
-                                p = tf.paragraphs[0]
-                                run = p.add_run()
-                                run.text = text
-                                font = run.font
-                                font.size = Pt(max(8, min(int(font_size), 72)))  # Clamp font size
-                                text_added = True
+            # Only add PDF page as background image, no text overlay to avoid doubling
+            pix = page.get_pixmap(dpi=150)
+            image_stream = io.BytesIO(pix.tobytes("png"))
+            slide.shapes.add_picture(image_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
             
-            # If no text was extracted, add the page as an image (fallback for image-based PDFs)
-            if not text_added:
-                pix = page.get_pixmap(dpi=150)
-                image_stream = io.BytesIO(pix.tobytes("png"))
-                slide.shapes.add_picture(image_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
-
+            # Note: Text overlay disabled by default to prevent doubling
+            # The PDF image already contains all the text content
+            # Only enable overlay_text if you need editable text (will cause duplication)
+            if overlay_text:
+                print(f"⚠️  Warning: Adding text overlay to slide {page_num + 1} - this may cause text duplication")
+                blocks = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)["blocks"]
+                for block in blocks:
+                    if 'lines' in block:
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text = span['text']
+                                if not text.strip():
+                                    continue
+                                rect = span['bbox']
+                                font_size = span['size']
+                                left = int(rect[0] * 12700)
+                                top = int(rect[1] * 12700)
+                                width = int((rect[2] - rect[0]) * 12700)
+                                height = int((rect[3] - rect[1]) * 12700)
+                                if width > 0 and height > 0:
+                                    txBox = slide.shapes.add_textbox(left, top, width, height)
+                                    tf = txBox.text_frame
+                                    tf.margin_left, tf.margin_right, tf.margin_top, tf.margin_bottom = 0, 0, 0, 0
+                                    tf.word_wrap = False
+                                    p = tf.paragraphs[0]
+                                    run = p.add_run()
+                                    run.text = text
+                                    font = run.font
+                                    font.size = Pt(int(font_size))
+        
         prs.save(output_path)
-        print("✅ PyMuPDF to PPTX conversion successful")
+        print("✅ PyMuPDF to PPTX conversion successful (image-based, no text doubling)")
         return True
-
     except ImportError:
         install_package('PyMuPDF')
         install_package('python-pptx')
-        return convert_to_pptx(input_path, output_path) # Retry
+        return convert_to_pptx(input_path, output_path, overlay_text)
     except Exception as e:
         print(f"❌ PyMuPDF to PPTX conversion failed: {e}")
         return False
@@ -439,23 +418,20 @@ def convert_pdf(input_path, output_path, format_type):
     elif format_type == 'xlsx':
         success = convert_to_xlsx(input_path, output_path)
     elif format_type == 'pptx':
-        success = convert_to_pptx(input_path, output_path)
-    
+        # By default, do NOT overlay text to avoid doubling
+        success = convert_to_pptx(input_path, output_path, overlay_text=False)
     return success
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
         print(f"Usage: python {sys.argv[0]} <input.pdf> <output.ext> <format>")
         sys.exit(1)
-    
     input_file = sys.argv[1]
     output_file = sys.argv[2]
     format_type = sys.argv[3].lower()
-    
     if not os.path.exists(input_file):
         print(f"❌ Input file not found: {input_file}")
         sys.exit(1)
-    
     success = convert_pdf(input_file, output_file, format_type)
     if success:
         print(f"✅ Conversion completed: {output_file}")

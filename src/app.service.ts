@@ -201,7 +201,8 @@ export class AppService {
       let command = '';
       
       // Special handling for Excel files to PDF with better command options
-      if (file.mimetype.includes('sheet') && format === 'pdf') {
+      const isExcelFile = this.fileValidationService['allowedMimeTypes']['excel'].includes(file.mimetype);
+      if (isExcelFile && format === 'pdf') {
         this.logger.log('Using specialized Excel to PDF conversion commands');
         // Try multiple Excel-specific conversion approaches
         const excelCommands = [
@@ -298,7 +299,8 @@ export class AppService {
       this.logger.error(`File conversion error: ${error.message}`);
       
       // Special handling for Excel to PDF conversion failures
-      if (file.mimetype.includes('sheet') && format === 'pdf' && 
+      const isExcelFile = this.fileValidationService['allowedMimeTypes']['excel'].includes(file.mimetype);
+      if (isExcelFile && format === 'pdf' && 
           (error.message.includes('export filter') || error.message.includes('no output') || error.message.includes('failed to process'))) {
         this.logger.log(`Standard LibreOffice failed for Excel to PDF, trying enhanced commands`);
         try {
