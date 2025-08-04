@@ -146,7 +146,16 @@ export class AppService {
       if (this.onlyOfficeService.isAvailable()) {
         try {
           this.logger.log(`Trying original ONLYOFFICE service as backup`);
-          return await this.onlyOfficeService.convertFile(file.buffer, file.originalname, format);
+          switch (format) {
+            case 'docx':
+              return await this.onlyOfficeService.convertPdfToDocx(file.buffer, file.originalname);
+            case 'xlsx':
+              return await this.onlyOfficeService.convertPdfToXlsx(file.buffer, file.originalname);
+            case 'pptx':
+              return await this.onlyOfficeService.convertPdfToPptx(file.buffer, file.originalname);
+            default:
+              throw new Error(`Unsupported format: ${format}`);
+          }
         } catch (onlyOfficeError) {
           this.logger.warn(`Original ONLYOFFICE also failed: ${onlyOfficeError.message}`);
         }
@@ -524,6 +533,7 @@ export class AppService {
     
     const input = `${tempDir}/${timestamp}_input.pdf`;
     const output = `${tempDir}/${timestamp}_output.pdf`;
+    let isImageHeavy = false;
     
     try {
       this.logger.log(`Starting PDF compression, input size: ${file.buffer.length} bytes, quality: ${sanitizedQuality}`);
@@ -533,7 +543,6 @@ export class AppService {
       this.logger.log(`PDF written to ${input}`);
 
       // Analyze PDF to determine if it's image-heavy (like mobile camera photos)
-      let isImageHeavy = false;
       try {
         const { stdout: pdfInfo } = await this.execAsync(`pdfinfo "${input}"`, { timeout: 10000 });
         const { stdout: imageInfo } = await this.execAsync(`pdfimages -list "${input}"`, { timeout: 10000 });
@@ -820,8 +829,8 @@ def main():
     for i, cmd in enumerate(methods):
         try:
             print(f"Trying method {i+1}: {cmd.split()[0]}")
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
-            if result.returncode == 0 and os.path.exists(output_file):
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60);
+            if result.returncode == 0 && os.path.exists(output_file):
                 print(f"Success with method {i+1}")
                 sys.exit(0)
             else:
