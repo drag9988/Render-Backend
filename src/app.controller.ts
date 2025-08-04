@@ -115,7 +115,8 @@ export class AppController {
       // Update file with sanitized filename
       file.originalname = validation.sanitizedFilename;
       
-      const output = await this.appService.convertLibreOffice(file, 'pdf');
+      // Use LibreOffice directly for Word to PDF conversion
+      const output = await this.appService.convertOfficeToPdf(file);
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
@@ -152,7 +153,8 @@ export class AppController {
       // Update file with sanitized filename
       file.originalname = validation.sanitizedFilename;
       
-      const output = await this.appService.convertLibreOffice(file, 'pdf');
+      // Use LibreOffice directly for Excel to PDF conversion
+      const output = await this.appService.convertOfficeToPdf(file);
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
@@ -189,7 +191,8 @@ export class AppController {
       // Update file with sanitized filename
       file.originalname = validation.sanitizedFilename;
       
-      const output = await this.appService.convertLibreOffice(file, 'pdf');
+      // Use LibreOffice directly for PowerPoint to PDF conversion
+      const output = await this.appService.convertOfficeToPdf(file);
       res.set({ 'Content-Type': 'application/pdf' });
       res.send(output);
     } catch (error) {
@@ -227,7 +230,8 @@ export class AppController {
       file.originalname = validation.sanitizedFilename;
       
       console.log(`Converting PDF to Word: ${file.originalname}, size: ${file.size} bytes`);
-      const output = await this.appService.convertLibreOffice(file, 'docx');
+      // Use ONLYOFFICE Enhanced Service for PDF to Word conversion
+      const output = await this.appService.convertPdfToOffice(file, 'docx');
       
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -308,7 +312,8 @@ export class AppController {
       file.originalname = validation.sanitizedFilename;
       
       console.log(`Converting PDF to Excel: ${file.originalname}, size: ${file.size} bytes`);
-      const output = await this.appService.convertLibreOffice(file, 'xlsx');
+      // Use ONLYOFFICE Enhanced Service for PDF to Excel conversion
+      const output = await this.appService.convertPdfToOffice(file, 'xlsx');
       
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -378,7 +383,8 @@ export class AppController {
       file.originalname = validation.sanitizedFilename;
       
       console.log(`Converting PDF to PowerPoint: ${file.originalname}, size: ${file.size} bytes`);
-      const output = await this.appService.convertLibreOffice(file, 'pptx');
+      // Use ONLYOFFICE Enhanced Service for PDF to PowerPoint conversion
+      const output = await this.appService.convertPdfToOffice(file, 'pptx');
       
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',

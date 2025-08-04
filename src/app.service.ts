@@ -18,24 +18,25 @@ export class AppService {
     private readonly fileValidationService: FileValidationService
   ) {}
 
-  async convertLibreOffice(file: Express.Multer.File, format: string): Promise<Buffer> {
+  /**
+   * Convert Office documents to PDF using LibreOffice
+   */
+  async convertOfficeToPdf(file: Express.Multer.File): Promise<Buffer> {
     if (!file || !file.buffer) {
       throw new Error('Invalid file provided');
     }
 
-    // Validate file based on its type and target format
-    let expectedFileType: 'pdf' | 'word' | 'excel' | 'powerpoint';
+    // Validate file based on its type
+    let expectedFileType: 'word' | 'excel' | 'powerpoint';
     
-    if (file.mimetype === 'application/pdf') {
-      expectedFileType = 'pdf';
-    } else if (this.fileValidationService['allowedMimeTypes']['word'].includes(file.mimetype)) {
+    if (this.fileValidationService['allowedMimeTypes']['word'].includes(file.mimetype)) {
       expectedFileType = 'word';
     } else if (this.fileValidationService['allowedMimeTypes']['excel'].includes(file.mimetype)) {
       expectedFileType = 'excel';
     } else if (this.fileValidationService['allowedMimeTypes']['powerpoint'].includes(file.mimetype)) {
       expectedFileType = 'powerpoint';
     } else {
-      throw new BadRequestException(`Unsupported file type: ${file.mimetype}`);
+      throw new BadRequestException(`Unsupported file type for Office to PDF conversion: ${file.mimetype}`);
     }
 
     // Validate the file
@@ -47,19 +48,85 @@ export class AppService {
     // Update the file with sanitized filename
     file.originalname = validation.sanitizedFilename;
 
-    // For PDF to Office formats, try ConvertAPI first, then fallback to LibreOffice
-    if (file.mimetype === 'application/pdf' && ['docx', 'xlsx', 'pptx'].includes(format)) {
-      return await this.convertPdfToOfficeFormat(file, format);
+    // Use LibreOffice directly for Office to PDF conversions
+    this.logger.log(`Converting ${expectedFileType.toUpperCase()} to PDF using LibreOffice for: ${file.originalname}`);
+    return await this.executeLibreOfficeConversion(file, 'pdf');
+  }
+
+  /**
+   * Convert PDF to Office formats using ONLYOFFICE Enhanced Service
+   */
+  async convertPdfToOffice(file: Express.Multer.File, format: string): Promise<Buffer> {
+    if (!file || !file.buffer) {
+      throw new Error('Invalid file provided');
     }
 
-    // For other conversions, use LibreOffice directly
-    return await this.executeLibreOfficeConversion(file, format);
+    // Validate PDF file
+    if (file.mimetype !== 'application/pdf') {
+      throw new BadRequestException(`Expected PDF file, got: ${file.mimetype}`);
+    }
+
+    const validation = this.fileValidationService.validateFile(file, 'pdf');
+    if (!validation.isValid) {
+      throw new BadRequestException(`PDF validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    // Update the file with sanitized filename
+    file.originalname = validation.sanitizedFilename;
+
+    // Validate target format
+    if (!['docx', 'xlsx', 'pptx'].includes(format)) {
+      throw new BadRequestException(`Unsupported target format: ${format}`);
+    }
+
+    return await this.convertPdfToOfficeFormat(file, format);
+  }
+
+  /**
+   * Legacy method for backward compatibility - routes to appropriate conversion method
+   */
+  async convertLibreOffice(file: Express.Multer.File, format: string): Promise<Buffer> {
+    if (!file || !file.buffer) {
+      throw new Error('Invalid file provided');
+    }
+
+    // Route to appropriate conversion method based on input and output format
+    if (file.mimetype === 'application/pdf' && ['docx', 'xlsx', 'pptx'].includes(format)) {
+      // PDF to Office - use ONLYOFFICE
+      return await this.convertPdfToOffice(file, format);
+    } else if (format === 'pdf') {
+      // Office to PDF - use LibreOffice
+      return await this.convertOfficeToPdf(file);
+    } else {
+      // Other conversions - use LibreOffice directly
+      let expectedFileType: 'pdf' | 'word' | 'excel' | 'powerpoint';
+      
+      if (file.mimetype === 'application/pdf') {
+        expectedFileType = 'pdf';
+      } else if (this.fileValidationService['allowedMimeTypes']['word'].includes(file.mimetype)) {
+        expectedFileType = 'word';
+      } else if (this.fileValidationService['allowedMimeTypes']['excel'].includes(file.mimetype)) {
+        expectedFileType = 'excel';
+      } else if (this.fileValidationService['allowedMimeTypes']['powerpoint'].includes(file.mimetype)) {
+        expectedFileType = 'powerpoint';
+      } else {
+        throw new BadRequestException(`Unsupported file type: ${file.mimetype}`);
+      }
+
+      const validation = this.fileValidationService.validateFile(file, expectedFileType);
+      if (!validation.isValid) {
+        throw new BadRequestException(`File validation failed: ${validation.errors.join(', ')}`);
+      }
+
+      file.originalname = validation.sanitizedFilename;
+      return await this.executeLibreOfficeConversion(file, format);
+    }
   }
 
   private async convertPdfToOfficeFormat(file: Express.Multer.File, format: string): Promise<Buffer> {
-    this.logger.log(`Converting PDF to ${format.toUpperCase()} - using Enhanced ONLYOFFICE Service for premium quality`);
+    this.logger.log(`Converting PDF to ${format.toUpperCase()} - using ONLYOFFICE Enhanced Service for premium quality`);
 
-    // Primary: Use Enhanced ONLYOFFICE Service (includes Python + LibreOffice + ONLYOFFICE Server)
+    // Primary: Use Enhanced ONLYOFFICE Service (includes ONLYOFFICE Server + Python + LibreOffice)
     try {
       this.logger.log(`Attempting PDF to ${format.toUpperCase()} conversion using Enhanced ONLYOFFICE Service`);
       if (format === 'docx') {
@@ -91,7 +158,7 @@ export class AppService {
       this.logger.log('Original ONLYOFFICE service not available, using LibreOffice as final fallback.');
     }
 
-    // Final fallback: LibreOffice (always available)
+    // Final fallback: LibreOffice (for compatibility - though not recommended for PDF to Office)
     this.logger.log(`Using LibreOffice as final conversion method for ${format.toUpperCase()}`);
     return await this.executeLibreOfficeConversion(file, format);
   }
