@@ -149,33 +149,37 @@ let OnlyOfficeService = OnlyOfficeService_1 = class OnlyOfficeService {
         const { exec } = require('child_process');
         const { promisify } = require('util');
         const execAsync = promisify(exec);
-        const commands = [
-            `libreoffice --headless --invisible --nodefault --nolockcheck --nologo --norestore --convert-to ${targetFormat} --infilter="writer_pdf_import" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-            `libreoffice --headless --writer --invisible --convert-to ${targetFormat}:"writer8" --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-            `libreoffice --headless --draw --invisible --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-            `libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`,
-        ];
+        const enhancedCommands = [];
+        if (targetFormat === 'pptx') {
+            enhancedCommands.push(`libreoffice --headless --impress --convert-to pptx:"Impress MS PowerPoint 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`, `libreoffice --headless --draw --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`, `libreoffice --headless --writer --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`, `libreoffice --headless --convert-to pptx --outdir "${path.dirname(outputPath)}" "${inputPath}"`);
+        }
+        else {
+            enhancedCommands.push(`libreoffice --headless --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`, targetFormat === 'docx'
+                ? `libreoffice --headless --writer --convert-to ${targetFormat}:"MS Word 2007 XML" --outdir "${path.dirname(outputPath)}" "${inputPath}"`
+                : `libreoffice --headless --calc --convert-to ${targetFormat} --outdir "${path.dirname(outputPath)}" "${inputPath}"`);
+        }
         let lastError = '';
-        for (let i = 0; i < commands.length; i++) {
-            const command = commands[i];
-            this.logger.log(`Enhanced LibreOffice attempt ${i + 1}: ${command}`);
+        for (let i = 0; i < enhancedCommands.length; i++) {
+            const command = enhancedCommands[i];
+            this.logger.log(`Attempting enhanced LibreOffice conversion ${i + 1}/${enhancedCommands.length} for ${targetFormat}`);
             try {
                 const { stdout, stderr } = await execAsync(command, {
-                    timeout: this.timeout,
+                    timeout: this.timeout - 10000,
                     maxBuffer: 1024 * 1024 * 10
                 });
                 if (stdout) {
-                    this.logger.log(`LibreOffice output (attempt ${i + 1}): ${stdout}`);
+                    this.logger.log(`LibreOffice output: ${stdout}`);
                 }
                 if (stderr && !stderr.includes('Warning')) {
-                    this.logger.warn(`LibreOffice stderr (attempt ${i + 1}): ${stderr}`);
+                    this.logger.warn(`LibreOffice stderr: ${stderr}`);
                 }
                 const expectedOutputPath = path.join(path.dirname(outputPath), path.basename(inputPath, '.pdf') + '.' + targetFormat);
                 try {
                     await fs.access(expectedOutputPath);
                     const result = await fs.readFile(expectedOutputPath);
-                    if (result.length > 100) {
-                        this.logger.log(`Successful conversion on attempt ${i + 1}, file size: ${result.length} bytes`);
+                    if (result.length > 500) {
+                        this.logger.log(`Enhanced LibreOffice conversion successful: ${result.length} bytes`);
+                        await fs.unlink(expectedOutputPath).catch(() => { });
                         return result;
                     }
                     else {
@@ -183,16 +187,16 @@ let OnlyOfficeService = OnlyOfficeService_1 = class OnlyOfficeService {
                     }
                 }
                 catch (fileError) {
-                    this.logger.warn(`Output file check failed on attempt ${i + 1}: ${fileError.message}`);
+                    this.logger.warn(`Output file check failed: ${fileError.message}`);
                     lastError = fileError.message;
                 }
             }
             catch (execError) {
-                this.logger.warn(`Execution failed on attempt ${i + 1}: ${execError.message}`);
+                this.logger.warn(`LibreOffice execution failed: ${execError.message}`);
                 lastError = execError.message;
             }
         }
-        throw new Error(`All LibreOffice conversion attempts failed. Last error: ${lastError}`);
+        throw new Error(`Enhanced LibreOffice conversion failed after ${enhancedCommands.length} attempts. Last error: ${lastError}`);
     }
     async uploadFileToOnlyOffice(filePath, filename) {
         try {
