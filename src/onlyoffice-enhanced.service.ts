@@ -842,7 +842,190 @@ def premium_convert_to_xlsx(input_path, output_path):
     """ULTIMATE PDF to XLSX conversion with AI-enhanced table detection and data intelligence"""
     print(f"🚀 Starting ULTIMATE PDF to XLSX conversion with advanced AI-like features...")
     
-    # Method 1: Tabula (Best for complex tables with advanced detection)
+    # Method 1: ULTIMATE pdfplumber with intelligent data structuring (MOST RELIABLE)
+    try:
+        import pdfplumber
+        import pandas as pd
+        import re
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, NamedStyle
+        
+        print("🧠 Using ULTIMATE pdfplumber (AI-Enhanced Table & Data Detection)...")
+        
+        wb = Workbook()
+        wb.remove(wb.active)
+        
+        # Professional styling
+        header_style = NamedStyle(name="header")
+        header_style.font = Font(bold=True, color="FFFFFF", size=12)
+        header_style.fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+        header_style.alignment = Alignment(horizontal="center", vertical="center")
+        header_style.border = Border(
+            left=Side(border_style="medium", color="FFFFFF"),
+            right=Side(border_style="medium", color="FFFFFF"),
+            top=Side(border_style="medium", color="FFFFFF"),
+            bottom=Side(border_style="medium", color="FFFFFF")
+        )
+        
+        data_style = NamedStyle(name="data")
+        data_style.border = Border(
+            left=Side(border_style="thin"),
+            right=Side(border_style="thin"),
+            top=Side(border_style="thin"),
+            bottom=Side(border_style="thin")
+        )
+        data_style.alignment = Alignment(wrap_text=True, vertical="center")
+        
+        sheet_created = False
+        
+        with pdfplumber.open(input_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                print(f"🔍 Analyzing page {page_num + 1} with ULTIMATE table detection...")
+                
+                # SUPER-ENHANCED table extraction with multiple detection methods
+                tables_found = []
+                
+                # Method 1: Ultra-precise table detection
+                try:
+                    tables_precise = page.extract_tables(table_settings={
+                        "vertical_strategy": "lines_strict",
+                        "horizontal_strategy": "lines_strict",
+                        "intersection_tolerance": 2,
+                        "text_tolerance": 2,
+                        "snap_tolerance": 2,
+                        "join_tolerance": 2,
+                        "edge_min_length": 3,
+                        "min_words_vertical": 1,
+                        "min_words_horizontal": 1
+                    })
+                    if tables_precise:
+                        tables_found.extend([(table, f"Precise_P{page_num+1}_T{i+1}") for i, table in enumerate(tables_precise)])
+                        print(f"📊 ULTIMATE precise detection found {len(tables_precise)} tables")
+                except Exception as e:
+                    print(f"⚠️ Precise method: {e}")
+                
+                # Method 2: Relaxed detection for complex layouts
+                if not tables_found:
+                    try:
+                        tables_relaxed = page.extract_tables(table_settings={
+                            "vertical_strategy": "text",
+                            "horizontal_strategy": "text", 
+                            "intersection_tolerance": 5,
+                            "text_tolerance": 5,
+                            "snap_tolerance": 5,
+                            "join_tolerance": 5
+                        })
+                        if tables_relaxed:
+                            tables_found.extend([(table, f"Smart_P{page_num+1}_T{i+1}") for i, table in enumerate(tables_relaxed)])
+                            print(f"🎯 ULTIMATE smart detection found {len(tables_relaxed)} tables")
+                    except Exception as e:
+                        print(f"⚠️ Smart method: {e}")
+                
+                # Method 3: AI-like text pattern detection for data without clear tables
+                if not tables_found:
+                    try:
+                        text = page.extract_text()
+                        if text:
+                            # ULTIMATE pattern-based table detection
+                            detected_tables = detect_tabular_patterns(text)
+                            if detected_tables:
+                                tables_found.extend([(table, f"AI_P{page_num+1}_T{i+1}") for i, table in enumerate(detected_tables)])
+                                print(f"🤖 ULTIMATE AI pattern detection found {len(detected_tables)} data structures")
+                    except Exception as e:
+                        print(f"⚠️ AI pattern method: {e}")
+                
+                # Process all found tables with ULTIMATE formatting
+                for table, sheet_name in tables_found:
+                    if table and len(table) > 1:
+                        ws = wb.create_sheet(title=sheet_name[:31])  # Excel sheet name limit
+                        sheet_created = True
+                        
+                        # ULTIMATE table processing
+                        processed_table = []
+                        max_cols = 0
+                        
+                        for row_idx, row in enumerate(table):
+                            processed_row = []
+                            for cell in row:
+                                if cell:
+                                    # ULTIMATE cell cleaning
+                                    clean_cell = re.sub(r'\\s+', ' ', str(cell)).strip()
+                                    clean_cell = clean_cell.replace('\\n', ' ').replace('\\r', ' ')
+                                    processed_row.append(clean_cell)
+                                else:
+                                    processed_row.append('')
+                            processed_table.append(processed_row)
+                            max_cols = max(max_cols, len(processed_row))
+                        
+                        # Normalize all rows to have the same number of columns
+                        for row in processed_table:
+                            while len(row) < max_cols:
+                                row.append('')
+                        
+                        # Add to Excel with ULTIMATE formatting
+                        for row_idx, row in enumerate(processed_table, 1):
+                            for col_idx, value in enumerate(row, 1):
+                                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                                
+                                # ULTIMATE styling
+                                if row_idx == 1:  # Header
+                                    cell.style = header_style
+                                else:
+                                    cell.style = data_style
+                                
+                                # ULTIMATE auto-sizing
+                                column_letter = cell.column_letter
+                                current_width = ws.column_dimensions[column_letter].width or 12
+                                if value and len(str(value)) > current_width:
+                                    ws.column_dimensions[column_letter].width = min(len(str(value)) + 3, 80)
+                        
+                        # ULTIMATE Excel features
+                        if len(processed_table) > 1:
+                            ws.freeze_panes = 'A2'  # Freeze header
+                            
+                        # Add filters to header row
+                        if len(processed_table) > 1:
+                            ws.auto_filter.ref = f"A1:{ws.cell(row=len(processed_table), column=max_cols).coordinate}"
+                        
+                        print(f"✅ ULTIMATE table processed: {len(processed_table)} rows × {max_cols} columns")
+                
+                # If no tables found, extract structured text data
+                if not tables_found:
+                    try:
+                        text = page.extract_text()
+                        if text and len(text.strip()) > 50:
+                            structured_data = extract_structured_text_data(text, page_num)
+                            if structured_data:
+                                ws = wb.create_sheet(title=f'Text_Page_{page_num+1}')
+                                sheet_created = True
+                                
+                                # Add structured text data
+                                for row_idx, row in enumerate(structured_data, 1):
+                                    for col_idx, value in enumerate(row, 1):
+                                        cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                                        if row_idx == 1:
+                                            cell.style = header_style
+                                        else:
+                                            cell.style = data_style
+                                
+                                print(f"� ULTIMATE text extraction: {len(structured_data)} structured data rows")
+                    except Exception as e:
+                        print(f"⚠️ Text extraction: {e}")
+        
+        if sheet_created:
+            wb.save(output_path)
+            print(f"✅ ULTIMATE pdfplumber conversion successful: {len(wb.sheetnames)} professional sheets")
+            return True
+            
+    except ImportError:
+        print("📦 Installing ULTIMATE pdfplumber dependencies...")
+        if (install_package('pdfplumber') and install_package('pandas') and 
+            install_package('openpyxl')):
+            return premium_convert_to_xlsx(input_path, output_path)
+    except Exception as e:
+        print(f"❌ ULTIMATE pdfplumber method failed: {e}")
+    
+    # Method 2: Advanced Tabula (If Java is available)
     try:
         import tabula
         import pandas as pd
@@ -850,196 +1033,55 @@ def premium_convert_to_xlsx(input_path, output_path):
         from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
         from openpyxl.utils.dataframe import dataframe_to_rows
         
-        print("🔍 Using Tabula (ULTIMATE Table Detection)...")
+        print("🔍 Using Advanced Tabula (Premium Table Detection)...")
         
-        # Advanced table detection with multiple strategies
+        # Try multiple Tabula strategies
         all_tables = []
         
-        # Strategy 1: Auto-detect with lattice method (best for bordered tables)
         try:
             tables_lattice = tabula.read_pdf(input_path, pages='all', lattice=True, pandas_options={'header': None})
             if tables_lattice:
                 print(f"📊 Tabula lattice detected {len(tables_lattice)} tables")
-                all_tables.extend([(table, 'lattice', i) for i, table in enumerate(tables_lattice)])
+                all_tables.extend([(table, 'Lattice', i) for i, table in enumerate(tables_lattice)])
         except Exception as e:
             print(f"⚠️ Lattice method failed: {e}")
         
-        # Strategy 2: Stream method (best for tables without borders)
         try:
             tables_stream = tabula.read_pdf(input_path, pages='all', stream=True, guess=True, pandas_options={'header': None})
             if tables_stream:
-                print(f"🌊 Tabula stream detected {len(tables_stream)} additional tables")
-                all_tables.extend([(table, 'stream', i) for i, table in enumerate(tables_stream)])
+                print(f"🌊 Tabula stream detected {len(tables_stream)} tables")
+                all_tables.extend([(table, 'Stream', i) for i, table in enumerate(tables_stream)])
         except Exception as e:
             print(f"⚠️ Stream method failed: {e}")
         
-        # Strategy 3: Multiple areas detection
-        try:
-            tables_areas = tabula.read_pdf(input_path, pages='all', multiple_tables=True, pandas_options={'header': None})
-            if tables_areas:
-                print(f"🎯 Tabula areas detected {len(tables_areas)} area tables")
-                all_tables.extend([(table, 'areas', i) for i, table in enumerate(tables_areas)])
-        except Exception as e:
-            print(f"⚠️ Areas method failed: {e}")
-        
         if all_tables:
-            # Create professional Excel workbook with advanced formatting
-            wb = Workbook()
-            wb.remove(wb.active)  # Remove default sheet
-            
-            # Define professional styling
-            header_font = Font(bold=True, color="FFFFFF")
-            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-            border = Border(
-                left=Side(border_style="thin"),
-                right=Side(border_style="thin"),
-                top=Side(border_style="thin"),
-                bottom=Side(border_style="thin")
-            )
-            center_alignment = Alignment(horizontal="center", vertical="center")
-            
-            sheet_count = 0
-            for table, method, table_idx in all_tables:
-                if not table.empty and table.shape[0] > 1 and table.shape[1] > 1:
-                    sheet_count += 1
-                    sheet_name = f"{method}_{sheet_count}"
-                    ws = wb.create_sheet(title=sheet_name)
-                    
-                    # Clean and process data
-                    table_clean = table.dropna(how='all').dropna(axis=1, how='all')
-                    
-                    # Detect if first row is header
-                    first_row = table_clean.iloc[0].astype(str)
-                    is_header = any(not val.replace('.', '').replace(',', '').isdigit() 
-                                  for val in first_row if val and val != 'nan')
-                    
-                    # Add data to sheet
-                    for r_idx, row in enumerate(dataframe_to_rows(table_clean, index=False, header=False)):
-                        for c_idx, value in enumerate(row, 1):
-                            cell = ws.cell(row=r_idx+1, column=c_idx, value=value)
-                            cell.border = border
-                            
-                            # Style header row
-                            if r_idx == 0 and is_header:
-                                cell.font = header_font
-                                cell.fill = header_fill
-                                cell.alignment = center_alignment
-                            
-                            # Auto-adjust column width
-                            column_letter = ws.cell(row=1, column=c_idx).column_letter
-                            current_width = ws.column_dimensions[column_letter].width or 10
-                            if value and len(str(value)) > current_width:
-                                ws.column_dimensions[column_letter].width = min(len(str(value)) + 2, 50)
-            
-            if sheet_count > 0:
-                wb.save(output_path)
-                print(f"✅ Tabula conversion successful: {sheet_count} high-quality tables with professional formatting")
-                return True
-            
-    except ImportError:
-        print("📦 Installing Tabula and dependencies...")
-        if (install_package('tabula-py') and install_package('pandas') and 
-            install_package('openpyxl') and install_package('xlsxwriter')):
-            return premium_convert_to_xlsx(input_path, output_path)
-    except Exception as e:
-        print(f"❌ Tabula method failed: {e}")
-    
-    # Method 2: Camelot (Enhanced with better configuration)
-    try:
-        import camelot
-        import pandas as pd
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, NamedStyle
-        
-        print("🐪 Using Enhanced Camelot (Premium Table Extraction)...")
-        
-        tables = []
-        
-        # Enhanced lattice detection with custom settings
-        try:
-            tables = camelot.read_pdf(input_path, pages='all', flavor='lattice',
-                                    table_areas=None, columns=None,
-                                    split_text=True, flag_size=True,
-                                    strip_text='\\n')
-            print(f"📋 Enhanced Camelot lattice found {tables.n} tables")
-        except Exception as e:
-            print(f"⚠️ Enhanced lattice failed: {e}")
-            
-        if tables.n == 0:
-            try:
-                tables = camelot.read_pdf(input_path, pages='all', flavor='stream',
-                                        table_areas=None, columns=None,
-                                        row_tol=2, column_tol=0)
-                print(f"📋 Enhanced Camelot stream found {tables.n} tables")
-            except Exception as e:
-                print(f"⚠️ Enhanced stream failed: {e}")
-        
-        if tables.n > 0:
-            # Create professional Excel with enhanced styling
             wb = Workbook()
             wb.remove(wb.active)
             
-            # Create named styles
-            header_style = NamedStyle(name="header")
-            header_style.font = Font(bold=True, color="FFFFFF", size=12)
-            header_style.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-            header_style.alignment = Alignment(horizontal="center", vertical="center")
-            header_style.border = Border(
-                left=Side(border_style="thin"),
-                right=Side(border_style="thin"),
-                top=Side(border_style="thin"),
-                bottom=Side(border_style="thin")
-            )
-            
-            data_style = NamedStyle(name="data")
-            data_style.border = Border(
-                left=Side(border_style="thin"),
-                right=Side(border_style="thin"),
-                top=Side(border_style="thin"),
-                bottom=Side(border_style="thin")
-            )
-            data_style.alignment = Alignment(wrap_text=True, vertical="top")
-            
-            for i, table in enumerate(tables):
-                ws = wb.create_sheet(title=f'Page_{table.page}_Table_{i+1}')
-                df = table.df
-                
-                # Advanced data cleaning
-                df = df.replace('', pd.NA).dropna(how='all').dropna(axis=1, how='all')
-                df = df.fillna('')  # Replace NaN with empty string
-                
-                # Write data with enhanced formatting
-                for row_idx, row in enumerate(df.itertuples(index=False), 1):
-                    for col_idx, value in enumerate(row, 1):
-                        cell = ws.cell(row=row_idx, column=col_idx, value=str(value))
-                        
-                        if row_idx == 1:  # Header row
-                            cell.style = header_style
-                        else:
-                            cell.style = data_style
-                        
-                        # Auto-adjust column width
-                        column_letter = cell.column_letter
-                        current_width = ws.column_dimensions[column_letter].width or 10
-                        if len(str(value)) > current_width:
-                            ws.column_dimensions[column_letter].width = min(len(str(value)) + 2, 60)
-                
-                # Freeze header row
-                ws.freeze_panes = 'A2'
+            for table, method, idx in all_tables:
+                if not table.empty and table.shape[0] > 1:
+                    ws = wb.create_sheet(title=f'{method}_{idx+1}')
+                    
+                    # Clean and add data
+                    table_clean = table.dropna(how='all').dropna(axis=1, how='all')
+                    
+                    for r_idx, row in enumerate(dataframe_to_rows(table_clean, index=False, header=False)):
+                        for c_idx, value in enumerate(row, 1):
+                            cell = ws.cell(row=r_idx+1, column=c_idx, value=value)
+                            if r_idx == 0:  # Header
+                                cell.font = Font(bold=True, color="FFFFFF")
+                                cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
             
             wb.save(output_path)
-            print(f"✅ Enhanced Camelot conversion successful: {tables.n} professional tables")
+            print(f"✅ Advanced Tabula conversion successful: {len(all_tables)} tables")
             return True
             
     except ImportError:
-        print("📦 Installing Enhanced Camelot...")
-        if (install_package('camelot-py', '[cv]') and install_package('pandas') and 
-            install_package('openpyxl')):
-            return premium_convert_to_xlsx(input_path, output_path)
+        print("⚠️ Tabula not available (requires Java)")
     except Exception as e:
-        print(f"❌ Enhanced Camelot method failed: {e}")
+        print(f"❌ Tabula method failed: {e}")
     
-    # Method 3: AI-Enhanced pdfplumber with intelligent data structuring
+    # Method 3: Enhanced pdfplumber fallback
     try:
         import pdfplumber
         import pandas as pd
@@ -1047,7 +1089,7 @@ def premium_convert_to_xlsx(input_path, output_path):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
         
-        print("🧠 Using AI-Enhanced pdfplumber (Intelligent Text-to-Excel)...")
+        print("🧠 Using Enhanced pdfplumber fallback...")
         
         wb = Workbook()
         wb.remove(wb.active)
@@ -1155,7 +1197,119 @@ def premium_convert_to_xlsx(input_path, output_path):
             install_package('openpyxl')):
             return premium_convert_to_xlsx(input_path, output_path)
     except Exception as e:
-        print(f"❌ AI-Enhanced pdfplumber method failed: {e}")
+        print(f"❌ Enhanced pdfplumber fallback failed: {e}")
+    
+    return False
+
+def detect_tabular_patterns(text):
+    """AI-like detection of tabular patterns in text"""
+    detected_tables = []
+    
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    current_table = []
+    
+    for line in lines:
+        # Clean the line
+        clean_line = re.sub(r'\\s+', ' ', line).strip()
+        
+        # Skip very short lines or section headers
+        if len(clean_line) < 5 or re.match(r'^[A-Z\\s]+$', clean_line):
+            # Save current table if it exists
+            if len(current_table) >= 2:
+                detected_tables.append(current_table)
+            current_table = []
+            continue
+        
+        # Look for patterns that suggest tabular data
+        # Pattern 1: Multiple spaces or tabs separating values
+        if re.search(r'\\s{3,}|\\t', clean_line):
+            potential_columns = re.split(r'\\s{3,}|\\t', clean_line)
+            if len(potential_columns) >= 2:
+                current_table.append([col.strip() for col in potential_columns])
+                continue
+        
+        # Pattern 2: Pipe or vertical bar separated
+        if '|' in clean_line and clean_line.count('|') >= 2:
+            potential_columns = clean_line.split('|')
+            if len(potential_columns) >= 3:
+                current_table.append([col.strip() for col in potential_columns if col.strip()])
+                continue
+        
+        # Pattern 3: Comma separated (but be careful with sentences)
+        if clean_line.count(',') >= 2 and len(clean_line) < 100:
+            potential_columns = clean_line.split(',')
+            if len(potential_columns) >= 3 and all(len(col.strip()) < 30 for col in potential_columns):
+                current_table.append([col.strip() for col in potential_columns])
+                continue
+        
+        # Pattern 4: Colon-separated key-value pairs
+        if ':' in clean_line and clean_line.count(':') == 1:
+            key, value = clean_line.split(':', 1)
+            if len(key.strip()) < 50 and len(value.strip()) < 100:
+                current_table.append([key.strip(), value.strip()])
+                continue
+        
+        # Pattern 5: Numbers and text (financial data, etc.)
+        number_pattern = r'\\b\\d+[,.]\\d+\\b|\\b\\d+\\b'
+        if len(re.findall(number_pattern, clean_line)) >= 2:
+            # This might be a data row
+            parts = re.split(r'\\s{2,}', clean_line)
+            if len(parts) >= 2:
+                current_table.append(parts)
+                continue
+        
+        # If we get here and we have a table, save it
+        if len(current_table) >= 2:
+            detected_tables.append(current_table)
+            current_table = []
+    
+    # Don't forget the last table
+    if len(current_table) >= 2:
+        detected_tables.append(current_table)
+    
+    return detected_tables
+
+def extract_structured_text_data(text, page_num):
+    """Extract structured data from text for Excel"""
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    structured_data = [['Data Type', 'Content', 'Context']]  # Header
+    
+    current_section = f"Page {page_num + 1}"
+    
+    for line in lines:
+        clean_line = line.strip()
+        
+        # Section headers (ALL CAPS or title case)
+        if re.match(r'^[A-Z][A-Z\\s]{3,}$', clean_line) or clean_line.isupper():
+            current_section = clean_line
+            structured_data.append(['Section Header', clean_line, f'Page {page_num + 1}'])
+        
+        # Key-value pairs
+        elif ':' in clean_line and clean_line.count(':') == 1:
+            key, value = clean_line.split(':', 1)
+            structured_data.append(['Key-Value', f'{key.strip()}: {value.strip()}', current_section])
+        
+        # Numbered items
+        elif re.match(r'^\\d+[\\.\\)]', clean_line):
+            structured_data.append(['Numbered Item', clean_line, current_section])
+        
+        # Bulleted items
+        elif re.match(r'^[•▪▫○●◦‣⁃-]', clean_line):
+            structured_data.append(['Bullet Point', clean_line, current_section])
+        
+        # Dates
+        elif re.search(r'\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b|\\b\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}\\b', clean_line):
+            structured_data.append(['Date Info', clean_line, current_section])
+        
+        # Numbers/Financial data
+        elif re.search(r'\\$[\\d,]+\\.?\\d*|\\b\\d+[,.]\\d+\\b', clean_line):
+            structured_data.append(['Numeric Data', clean_line, current_section])
+        
+        # Regular text (but only if substantial)
+        elif len(clean_line) > 20:
+            structured_data.append(['Text Content', clean_line[:100] + ('...' if len(clean_line) > 100 else ''), current_section])
+    
+    return structured_data if len(structured_data) > 1 else None
     
     return False
 
@@ -1799,16 +1953,19 @@ def basic_convert_to_xlsx(input_path, output_path):
         from openpyxl.utils.dataframe import dataframe_to_rows
         import re
         
-        print("📊 Enhanced Basic XLSX Conversion with Smart Table Detection...")
+        print("📊 ULTIMATE Enhanced Basic XLSX Conversion with AI-like Smart Detection...")
         
         wb = Workbook()
         wb.remove(wb.active)  # Remove default sheet
         
         pdf_doc = fitz.open(input_path)
         
-        # Define professional styles
-        header_font = Font(bold=True, color="FFFFFF")
+        # Define ULTIMATE professional styles
+        header_font = Font(bold=True, color="FFFFFF", size=14)
         header_fill = PatternFill(start_color="2F5597", end_color="2F5597", fill_type="solid")
+        subheader_font = Font(bold=True, color="FFFFFF", size=12)
+        subheader_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
+        data_font = Font(size=11)
         border = Border(
             left=Side(border_style="thin"),
             right=Side(border_style="thin"),
@@ -1819,131 +1976,264 @@ def basic_convert_to_xlsx(input_path, output_path):
         sheet_created = False
         
         for page_num, page in enumerate(pdf_doc):
-            # Advanced text extraction with structure preservation
+            print(f"🔍 ULTIMATE analysis of page {page_num + 1}...")
+            
+            # ULTIMATE Method 1: Advanced table detection with machine learning-like patterns
             blocks = page.get_text("dict")["blocks"]
             
-            # Method 1: Look for table-like structures
-            table_candidates = []
-            current_table = []
-            
+            # Collect all text with positioning for better analysis
+            text_blocks = []
             for block in blocks:
                 if 'lines' in block:
                     for line in block["lines"]:
                         line_text = ""
+                        line_bbox = line.get('bbox', [0, 0, 0, 0])
                         for span in line["spans"]:
                             line_text += span['text'] + " "
-                        
-                        clean_line = line_text.strip()
-                        if clean_line:
-                            # Detect potential table rows (multiple columns separated by spaces/tabs)
-                            # Look for patterns like: word1  word2  word3 or word1|word2|word3
-                            potential_columns = re.split(r'\\s{2,}|\\t|\\|', clean_line)
-                            
-                            if len(potential_columns) >= 2:
-                                # This might be a table row
-                                current_table.append([col.strip() for col in potential_columns])
-                            else:
-                                # Not a table row, save current table if it exists
-                                if len(current_table) >= 2:  # At least 2 rows to be a table
-                                    table_candidates.append(current_table)
-                                current_table = []
+                        if line_text.strip():
+                            text_blocks.append({
+                                'text': line_text.strip(),
+                                'bbox': line_bbox,
+                                'x': line_bbox[0] if line_bbox else 0,
+                                'y': line_bbox[1] if line_bbox else 0
+                            })
             
-            # Don't forget the last table
-            if len(current_table) >= 2:
-                table_candidates.append(current_table)
+            # ULTIMATE table detection using spatial analysis
+            table_candidates = detect_ultimate_tables(text_blocks)
             
-            # Process found tables
+            # Process ULTIMATE detected tables
             for table_idx, table_data in enumerate(table_candidates):
                 if len(table_data) > 1:
-                    sheet_name = f'Page_{page_num+1}_Table_{table_idx+1}'
-                    ws = wb.create_sheet(title=sheet_name)
+                    sheet_name = f'UltimateTable_P{page_num+1}_T{table_idx+1}'
+                    ws = wb.create_sheet(title=sheet_name[:31])  # Excel limit
                     sheet_created = True
                     
-                    # Add table data with professional formatting
-                    for row_idx, row_data in enumerate(table_data):
+                    # ULTIMATE table processing with smart column alignment
+                    max_cols = max(len(row) for row in table_data)
+                    
+                    # Normalize all rows to have the same number of columns
+                    normalized_table = []
+                    for row in table_data:
+                        normalized_row = row + [''] * (max_cols - len(row))
+                        normalized_table.append(normalized_row)
+                    
+                    # Add ULTIMATE formatting
+                    for row_idx, row_data in enumerate(normalized_table):
                         for col_idx, cell_value in enumerate(row_data):
-                            cell = ws.cell(row=row_idx+1, column=col_idx+1, value=cell_value)
+                            cell = ws.cell(row=row_idx+1, column=col_idx+1, value=str(cell_value))
                             cell.border = border
                             
-                            # Format header row
+                            # ULTIMATE header formatting
                             if row_idx == 0:
                                 cell.font = header_font
                                 cell.fill = header_fill
                                 cell.alignment = Alignment(horizontal="center", vertical="center")
+                            else:
+                                cell.font = data_font
+                                cell.alignment = Alignment(vertical="center", wrap_text=True)
                             
-                            # Auto-adjust column width
+                            # ULTIMATE auto-sizing
                             column_letter = cell.column_letter
-                            current_width = ws.column_dimensions[column_letter].width or 10
-                            if len(str(cell_value)) > current_width:
-                                ws.column_dimensions[column_letter].width = min(len(str(cell_value)) + 2, 50)
+                            current_width = ws.column_dimensions[column_letter].width or 12
+                            content_width = len(str(cell_value)) + 3
+                            if content_width > current_width:
+                                ws.column_dimensions[column_letter].width = min(content_width, 80)
+                    
+                    # ULTIMATE Excel features
+                    if len(normalized_table) > 1:
+                        ws.freeze_panes = 'A2'  # Freeze header
+                        ws.auto_filter.ref = f"A1:{ws.cell(row=len(normalized_table), column=max_cols).coordinate}"
+                    
+                    print(f"✅ ULTIMATE table created: {len(normalized_table)} rows × {max_cols} columns")
             
-            # Method 2: If no tables found, extract all text as structured data
+            # ULTIMATE Method 2: Intelligent text analysis for non-table data
             if not table_candidates:
                 all_text = page.get_text()
                 if all_text.strip():
-                    lines = [line.strip() for line in all_text.split('\\n') if line.strip()]
+                    structured_data = extract_ultimate_structured_data(all_text, page_num)
                     
-                    if lines:
-                        sheet_name = f'Text_Page_{page_num+1}'
-                        ws = wb.create_sheet(title=sheet_name)
+                    if structured_data and len(structured_data) > 1:
+                        sheet_name = f'UltimateData_P{page_num+1}'
+                        ws = wb.create_sheet(title=sheet_name[:31])
                         sheet_created = True
                         
-                        # Intelligent text organization
-                        structured_data = [['Type', 'Content', 'Details']]  # Header
-                        
-                        for line in lines:
-                            line_type = 'Content'
-                            details = ''
-                            
-                            # Classify line type
-                            if ':' in line and len(line.split(':', 1)) == 2:
-                                line_type = 'Key-Value'
-                                key, value = line.split(':', 1)
-                                line = key.strip()
-                                details = value.strip()
-                            elif re.match(r'^\\d+\\.', line):
-                                line_type = 'Numbered Item'
-                            elif re.match(r'^[A-Z][A-Z\\s]{3,}$', line):
-                                line_type = 'Header'
-                            elif len(line) > 100:
-                                line_type = 'Paragraph'
-                            
-                            structured_data.append([line_type, line, details])
-                        
-                        # Add structured data with formatting
+                        # Add ULTIMATE structured data with advanced formatting
                         for row_idx, row_data in enumerate(structured_data):
                             for col_idx, cell_value in enumerate(row_data):
-                                cell = ws.cell(row=row_idx+1, column=col_idx+1, value=cell_value)
+                                cell = ws.cell(row=row_idx+1, column=col_idx+1, value=str(cell_value))
                                 cell.border = border
                                 
                                 if row_idx == 0:  # Header
                                     cell.font = header_font
                                     cell.fill = header_fill
                                     cell.alignment = Alignment(horizontal="center", vertical="center")
+                                elif row_data[0] in ['Section', 'Header']:  # Section headers
+                                    cell.font = subheader_font
+                                    cell.fill = subheader_fill
+                                    cell.alignment = Alignment(horizontal="left", vertical="center")
+                                else:
+                                    cell.font = data_font
+                                    cell.alignment = Alignment(vertical="center", wrap_text=True)
                                 
-                                # Auto-adjust column width
+                                # ULTIMATE column sizing
                                 column_letter = cell.column_letter
                                 current_width = ws.column_dimensions[column_letter].width or 15
-                                if len(str(cell_value)) > current_width:
-                                    ws.column_dimensions[column_letter].width = min(len(str(cell_value)) + 2, 60)
+                                content_width = len(str(cell_value)) + 3
+                                if content_width > current_width:
+                                    ws.column_dimensions[column_letter].width = min(content_width, 100)
+                        
+                        print(f"📊 ULTIMATE structured data: {len(structured_data)} intelligent data rows")
         
-        # If we created any sheets, save the workbook
+        # ULTIMATE result processing
         if sheet_created:
-            wb.save(output_path)
-            pdf_doc.close()
-            print(f"✅ Enhanced Basic XLSX conversion successful with professional formatting")
-            return True
-        else:
-            # Create a simple summary sheet if no content was found
-            ws = wb.create_sheet(title='PDF_Summary')
-            ws['A1'] = 'PDF Information'
-            ws['B1'] = 'Value'
-            ws['A2'] = 'Total Pages'
-            ws['B2'] = len(pdf_doc)
-            ws['A3'] = 'Conversion Method'
-            ws['B3'] = 'Basic Text Extraction'
+            # Add ULTIMATE summary sheet
+            summary_ws = wb.create_sheet(title='ULTIMATE_Summary', index=0)
+            summary_data = [
+                ['ULTIMATE PDF Analysis', '', ''],
+                ['', '', ''],
+                ['Property', 'Value', 'Details'],
+                ['Total Pages', len(pdf_doc), 'Pages processed'],
+                ['Sheets Created', len(wb.sheetnames) - 1, 'Data sheets generated'],
+                ['Conversion Method', 'ULTIMATE Enhanced', 'AI-like table detection'],
+                ['Quality Level', 'Professional', 'Advanced formatting applied'],
+                ['Features', 'Headers, Borders, Auto-sizing', 'Excel optimization'],
+                ['', '', ''],
+                ['Sheet Index', '', ''],
+            ]
+            
+            # Add sheet list
+            for idx, sheet_name in enumerate(wb.sheetnames[1:], 1):
+                summary_data.append([f'Sheet {idx}', sheet_name, 'Data sheet'])
             
             # Format summary
+            for row_idx, row_data in enumerate(summary_data, 1):
+                for col_idx, cell_value in enumerate(row_data, 1):
+                    cell = summary_ws.cell(row=row_idx, column=col_idx, value=cell_value)
+                    
+                    if row_idx == 1:  # Title
+                        cell.font = Font(bold=True, size=16, color="2F5597")
+                    elif row_idx == 3 or (row_idx == 10):  # Headers
+                        cell.font = header_font
+                        cell.fill = header_fill
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                    else:
+                        cell.font = data_font
+                    
+                    cell.border = border
+            
+            # Format summary columns
+            summary_ws.column_dimensions['A'].width = 20
+            summary_ws.column_dimensions['B'].width = 25
+            summary_ws.column_dimensions['C'].width = 30
+            
+            wb.save(output_path)
+            pdf_doc.close()
+            print(f"✅ ULTIMATE Enhanced XLSX conversion successful with professional formatting")
+            return True
+        else:
+            pdf_doc.close()
+            print("⚠️ No extractable content found")
+            return False
+
+def detect_ultimate_tables(text_blocks):
+    """ULTIMATE table detection using spatial and pattern analysis"""
+    if not text_blocks:
+        return []
+    
+    # Sort blocks by Y position (top to bottom), then X position (left to right)
+    sorted_blocks = sorted(text_blocks, key=lambda b: (b['y'], b['x']))
+    
+    tables = []
+    current_table = []
+    
+    # Group lines that are at similar Y positions (potential table rows)
+    y_tolerance = 10  # pixels
+    current_y_group = []
+    current_y = None
+    
+    for block in sorted_blocks:
+        if current_y is None or abs(block['y'] - current_y) <= y_tolerance:
+            current_y_group.append(block)
+            current_y = block['y']
+        else:
+            # Process the current Y group as a potential table row
+            if len(current_y_group) >= 2:  # At least 2 columns
+                # Sort by X position to get column order
+                row_blocks = sorted(current_y_group, key=lambda b: b['x'])
+                row_data = [block['text'] for block in row_blocks]
+                current_table.append(row_data)
+            elif current_table:
+                # End of potential table
+                if len(current_table) >= 2:
+                    tables.append(current_table)
+                current_table = []
+            
+            # Start new Y group
+            current_y_group = [block]
+            current_y = block['y']
+    
+    # Don't forget the last group
+    if len(current_y_group) >= 2:
+        row_blocks = sorted(current_y_group, key=lambda b: b['x'])
+        row_data = [block['text'] for block in row_blocks]
+        current_table.append(row_data)
+    
+    if len(current_table) >= 2:
+        tables.append(current_table)
+    
+    # If spatial analysis didn't work, fall back to pattern-based detection
+    if not tables:
+        all_text = '\\n'.join(block['text'] for block in text_blocks)
+        pattern_tables = detect_tabular_patterns(all_text)
+        tables.extend(pattern_tables)
+    
+    return tables
+
+def extract_ultimate_structured_data(text, page_num):
+    """Extract ULTIMATE structured data with intelligent categorization"""
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    if not lines:
+        return None
+    
+    structured_data = [['Category', 'Content', 'Context', 'Page']]  # ULTIMATE header
+    
+    current_section = f"Page {page_num + 1}"
+    
+    for line in lines:
+        clean_line = line.strip()
+        if len(clean_line) < 3:
+            continue
+        
+        category = 'Text'
+        context = current_section
+        
+        # ULTIMATE categorization
+        if re.match(r'^[A-Z][A-Z\\s]{3,}$', clean_line) or (clean_line.isupper() and len(clean_line) > 5):
+            category = 'Section Header'
+            current_section = clean_line
+        elif ':' in clean_line and clean_line.count(':') == 1 and len(clean_line) < 100:
+            category = 'Key-Value Pair'
+        elif re.match(r'^\\d+[\\.\\)]', clean_line):
+            category = 'Numbered Item'
+        elif re.match(r'^[•▪▫○●◦‣⁃-]', clean_line):
+            category = 'Bullet Point'
+        elif re.search(r'\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\\b', clean_line.lower()):
+            category = 'Date/Time'
+        elif re.search(r'\\$[\\d,]+\\.?\\d*|\\b\\d+[,.]\\d+\\b|\\b\\d+%\\b', clean_line):
+            category = 'Financial/Numeric'
+        elif re.search(r'\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b', clean_line):
+            category = 'Contact Info'
+        elif len(clean_line) > 80:
+            category = 'Paragraph'
+        elif clean_line.endswith(':'):
+            category = 'Label/Title'
+        
+        # Truncate very long content
+        display_content = clean_line[:200] + ('...' if len(clean_line) > 200 else '')
+        
+        structured_data.append([category, display_content, context, page_num + 1])
+    
+    return structured_data if len(structured_data) > 1 else None
             for row in ws['A1:B3']:
                 for cell in row:
                     cell.border = border
