@@ -311,47 +311,135 @@ export class AppController {
       // Update file with sanitized filename
       file.originalname = validation.sanitizedFilename;
       
-      console.log(`Converting PDF to Excel: ${file.originalname}, size: ${file.size} bytes`);
+      console.log(`🚀 Starting ULTIMATE PDF to Excel conversion: ${file.originalname}, size: ${file.size} bytes`);
+      console.log(`📊 Using Enhanced ONLYOFFICE Service with advanced table detection...`);
+      
       // Use ONLYOFFICE Enhanced Service for PDF to Excel conversion
       const output = await this.appService.convertPdfToOffice(file, 'xlsx');
       
+      console.log(`✅ PDF to Excel conversion successful: ${output.length} bytes output`);
+      
       res.set({ 
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.xlsx')}"` 
+        'Content-Disposition': `attachment; filename="${file.originalname.replace('.pdf', '.xlsx')}"`,
+        'X-Conversion-Method': 'Enhanced-ONLYOFFICE-Service',
+        'X-Output-Size': output.length.toString()
       });
       res.send(output);
     } catch (error) {
-      console.error('PDF to Excel conversion error:', error.message);
+      console.error('❌ PDF to Excel conversion error:', error.message);
       
       if (error.message.includes('timeout')) {
         return res.status(408).json({ 
           error: 'Conversion timeout', 
-          message: 'The PDF conversion is taking too long. Please try with a smaller or simpler PDF.' 
-        });
-      } else if (error.message.includes('complex formatting')) {
-        return res.status(422).json({ 
-          error: 'Complex PDF format', 
-          message: 'This PDF may not contain tabular data suitable for Excel conversion.',
+          message: 'The PDF to Excel conversion is taking too long. This usually happens with large or complex PDFs.',
           suggestions: [
-            'Ensure the PDF contains tables or structured data',
-            'Try with a PDF that has clear tabular layout',
-            'Consider manual copy-paste for complex data structures'
+            'Try with a smaller PDF file (under 10MB)',
+            'Split large PDFs into smaller sections',
+            'Ensure the PDF contains clear tabular data for better conversion'
+          ],
+          recommendations: {
+            'file_size': 'Keep PDF files under 10MB for optimal conversion speed',
+            'content_type': 'PDFs with clear tables and structured data convert best',
+            'retry': 'Please try again in a few minutes'
+          }
+        });
+      } else if (error.message.includes('complex formatting') || error.message.includes('complex PDF')) {
+        return res.status(422).json({ 
+          error: 'Complex PDF format detected', 
+          message: 'This PDF has complex formatting that makes table extraction challenging.',
+          details: 'The Enhanced ONLYOFFICE Service attempted multiple conversion methods but could not extract reliable tabular data.',
+          suggestions: [
+            'Ensure the PDF contains clear tables with visible borders or consistent spacing',
+            'Try with a PDF that has simple table layouts',
+            'Consider using a PDF with text-based tables rather than image-based ones',
+            'If the PDF has multiple tables, they should be well-separated'
+          ],
+          alternatives: [
+            'Export the data directly from the original source (e.g., Excel, database)',
+            'Use specialized PDF table extraction software',
+            'Convert the PDF to text first, then organize the data manually'
           ]
         });
-      } else if (error.message.includes('scanned PDF')) {
+      } else if (error.message.includes('scanned PDF') || error.message.includes('image')) {
         return res.status(422).json({ 
-          error: 'Scanned PDF detected', 
-          message: 'This appears to be a scanned PDF which cannot be converted to Excel format.',
+          error: 'Scanned PDF or image-based content detected', 
+          message: 'This appears to be a scanned PDF or contains primarily images, which cannot be directly converted to Excel.',
+          details: 'The system detected that this PDF likely contains scanned images rather than selectable text and tables.',
           suggestions: [
-            'Use OCR software first to make the PDF text-selectable',
-            'Try with a text-based PDF containing tables',
-            'Export data directly from the original source if possible'
+            'Use OCR (Optical Character Recognition) software first to make the PDF text-selectable',
+            'Try with a text-based PDF that allows text selection',
+            'Export data directly from the original source if possible',
+            'Use specialized OCR tools that can recognize table structures'
+          ],
+          tools_recommended: [
+            'Adobe Acrobat Pro (OCR functionality)',
+            'Tabula (for table extraction from PDFs)',
+            'ABBYY FineReader (advanced OCR)',
+            'Online OCR services with table recognition'
+          ]
+        });
+      } else if (error.message.includes('no tables') || error.message.includes('no data')) {
+        return res.status(422).json({ 
+          error: 'No tabular data found', 
+          message: 'The PDF was processed successfully, but no table structures could be detected.',
+          details: 'The Enhanced ONLYOFFICE Service analyzed the PDF but could not identify organized data suitable for Excel format.',
+          suggestions: [
+            'Verify that the PDF contains tables or structured data',
+            'Check if the data is organized in columns and rows',
+            'Ensure tables have clear boundaries or consistent spacing',
+            'Try with a PDF that has more traditional table layouts'
+          ],
+          conversion_attempted: [
+            'Advanced table detection algorithms',
+            'Text-based data extraction',
+            'Multiple conversion methods including Tabula, Camelot, and pdfplumber',
+            'Intelligent data structure analysis'
+          ]
+        });
+      } else if (error.message.includes('All premium conversion methods failed')) {
+        return res.status(500).json({
+          error: 'Advanced conversion methods exhausted',
+          message: 'All available high-quality conversion methods have been attempted.',
+          details: 'The Enhanced ONLYOFFICE Service tried multiple premium conversion approaches including ONLYOFFICE Document Server, advanced Python libraries, and enhanced LibreOffice methods.',
+          methods_attempted: [
+            'ONLYOFFICE Document Server (if configured)',
+            'Tabula (advanced table detection)',
+            'Camelot (premium table extraction)', 
+            'pdfplumber (intelligent text extraction)',
+            'Enhanced LibreOffice with Calc optimization',
+            'PyMuPDF with smart data structuring'
+          ],
+          recommendations: [
+            'Deploy ONLYOFFICE Document Server for best results',
+            'Try with a simpler PDF containing clear table structures',
+            'Consider manual data extraction for complex documents',
+            'Use the original application to export data directly'
+          ],
+          technical_support: 'Contact technical support if this is a recurring issue'
+        });
+      } else if (error.message.includes('File validation failed')) {
+        return res.status(400).json({
+          error: 'PDF file validation failed',
+          message: 'The uploaded file failed security and format validation.',
+          details: error.message,
+          requirements: [
+            'File must be a valid PDF format',
+            'File size must be under 50MB',
+            'File must not be password-protected',
+            'File must contain readable content'
           ]
         });
       } else {
         return res.status(500).json({ 
-          error: 'Failed to convert PDF to Excel', 
-          message: error.message 
+          error: 'PDF to Excel conversion failed', 
+          message: 'An unexpected error occurred during the conversion process.',
+          details: error.message,
+          support_info: {
+            'conversion_service': 'Enhanced ONLYOFFICE Service',
+            'error_type': 'Internal processing error',
+            'recommended_action': 'Please try again or contact support if the issue persists'
+          }
         });
       }
     }
