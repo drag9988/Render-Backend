@@ -489,41 +489,94 @@ export class OnlyOfficeEnhancedService {
     const scriptPath = inputPath.replace('.pdf', '_premium_convert.py');
 
     try {
+      this.logger.log(`🐍 Starting Premium Python conversion for ${targetFormat.toUpperCase()}`);
+      this.logger.log(`📍 Input path: ${inputPath}`);
+      this.logger.log(`📍 Output path: ${outputPath}`);
+      this.logger.log(`📍 Script path: ${scriptPath}`);
+      this.logger.log(`📍 Python path: ${this.pythonPath}`);
+      
+      // Check if input file exists
+      const inputExists = await fs.access(inputPath).then(() => true).catch(() => false);
+      if (!inputExists) {
+        throw new Error(`Input PDF file does not exist: ${inputPath}`);
+      }
+      
+      const inputStats = await fs.stat(inputPath);
+      this.logger.log(`📄 Input file size: ${inputStats.size} bytes`);
+
+      // Write Python script
       await fs.writeFile(scriptPath, premiumPythonScript);
+      this.logger.log(`✅ Python script written successfully`);
+      
+      // Check if script was written correctly
+      const scriptStats = await fs.stat(scriptPath);
+      this.logger.log(`📜 Python script size: ${scriptStats.size} bytes`);
 
       const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}" "${targetFormat}"`;
-      this.logger.log(`🐍 Executing Premium Python conversion: ${targetFormat.toUpperCase()}`);
+      this.logger.log(`� Executing command: ${command}`);
 
+      const startTime = Date.now();
       const { stdout, stderr } = await execAsync(command, { 
         timeout: this.timeout,
         maxBuffer: 1024 * 1024 * 20 // 20MB buffer for large outputs
       });
+      const endTime = Date.now();
+      
+      this.logger.log(`⏱️ Python execution time: ${endTime - startTime}ms`);
 
-      if (stderr && !stderr.includes('Warning') && !stderr.includes('INFO')) {
-        this.logger.warn(`Premium Python stderr: ${stderr}`);
+      // Log all output for debugging
+      if (stderr) {
+        this.logger.log(`🔍 Premium Python stderr (full): ${stderr}`);
+        if (!stderr.includes('Warning') && !stderr.includes('INFO') && !stderr.includes('pip as the \'root\' user')) {
+          this.logger.warn(`❗ Premium Python stderr (non-warning): ${stderr}`);
+        }
       }
 
       if (stdout) {
-        this.logger.log(`Premium Python stdout: ${stdout}`);
+        this.logger.log(`📝 Premium Python stdout (full): ${stdout}`);
       }
 
       // Check if output file exists
+      this.logger.log(`🔍 Checking if output file exists: ${outputPath}`);
       const outputExists = await fs.access(outputPath).then(() => true).catch(() => false);
       if (!outputExists) {
+        this.logger.error(`❌ Output file was not created: ${outputPath}`);
+        
+        // List files in the directory to see what was created
+        try {
+          const outputDir = path.dirname(outputPath);
+          const files = await fs.readdir(outputDir);
+          this.logger.log(`📁 Files in output directory: ${files.join(', ')}`);
+        } catch (dirError) {
+          this.logger.error(`❌ Could not list output directory: ${dirError.message}`);
+        }
+        
         throw new Error('Premium Python conversion did not produce output file');
       }
 
       const result = await fs.readFile(outputPath);
+      this.logger.log(`📊 Output file size: ${result.length} bytes`);
+      
       if (result.length < 100) {
+        this.logger.error(`❌ Output file too small: ${result.length} bytes`);
         throw new Error(`Premium Python output file too small: ${result.length} bytes`);
       }
 
+      this.logger.log(`✅ Premium Python conversion successful!`);
       return result;
 
     } catch (error) {
+      this.logger.error(`❌ Premium Python conversion error: ${error.message}`);
+      this.logger.error(`🔍 Full error details: ${JSON.stringify(error, null, 2)}`);
       throw new Error(`Premium Python conversion failed: ${error.message}`);
     } finally {
-      await fs.unlink(scriptPath).catch(() => {});
+      // Clean up script file
+      try {
+        await fs.unlink(scriptPath);
+        this.logger.log(`🧹 Cleaned up Python script: ${scriptPath}`);
+      } catch (cleanupError) {
+        this.logger.warn(`⚠️ Could not clean up script: ${cleanupError.message}`);
+      }
     }
   }
 
@@ -666,41 +719,77 @@ export class OnlyOfficeEnhancedService {
     const scriptPath = inputPath.replace('.pdf', '_fallback_convert.py');
 
     try {
+      this.logger.log(`🛡️ Starting Fallback Python conversion for ${targetFormat.toUpperCase()}`);
+      this.logger.log(`📍 Input path: ${inputPath}`);
+      this.logger.log(`📍 Output path: ${outputPath}`);
+      this.logger.log(`📍 Script path: ${scriptPath}`);
+
       await fs.writeFile(scriptPath, fallbackPythonScript);
+      this.logger.log(`✅ Fallback Python script written successfully`);
 
       const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}" "${targetFormat}"`;
-      this.logger.log(`🛡️ Executing Fallback Python conversion: ${targetFormat.toUpperCase()}`);
+      this.logger.log(`� Executing command: ${command}`);
 
+      const startTime = Date.now();
       const { stdout, stderr } = await execAsync(command, { 
         timeout: this.timeout,
         maxBuffer: 1024 * 1024 * 15 // 15MB buffer
       });
+      const endTime = Date.now();
+      
+      this.logger.log(`⏱️ Fallback Python execution time: ${endTime - startTime}ms`);
 
-      if (stderr && !stderr.includes('Warning')) {
-        this.logger.warn(`Fallback Python stderr: ${stderr}`);
+      if (stderr) {
+        this.logger.log(`🔍 Fallback Python stderr (full): ${stderr}`);
+        if (!stderr.includes('Warning') && !stderr.includes('pip as the \'root\' user')) {
+          this.logger.warn(`❗ Fallback Python stderr (non-warning): ${stderr}`);
+        }
       }
 
       if (stdout) {
-        this.logger.log(`Fallback Python stdout: ${stdout}`);
+        this.logger.log(`📝 Fallback Python stdout (full): ${stdout}`);
       }
 
       // Check if output file exists
+      this.logger.log(`🔍 Checking if output file exists: ${outputPath}`);
       const outputExists = await fs.access(outputPath).then(() => true).catch(() => false);
       if (!outputExists) {
+        this.logger.error(`❌ Fallback output file was not created: ${outputPath}`);
+        
+        // List files in the directory to see what was created
+        try {
+          const outputDir = path.dirname(outputPath);
+          const files = await fs.readdir(outputDir);
+          this.logger.log(`📁 Files in output directory: ${files.join(', ')}`);
+        } catch (dirError) {
+          this.logger.error(`❌ Could not list output directory: ${dirError.message}`);
+        }
+        
         throw new Error('Fallback Python conversion did not produce output file');
       }
 
       const result = await fs.readFile(outputPath);
+      this.logger.log(`📊 Fallback output file size: ${result.length} bytes`);
+      
       if (result.length < 50) {
+        this.logger.error(`❌ Fallback output file too small: ${result.length} bytes`);
         throw new Error(`Fallback Python output file too small: ${result.length} bytes`);
       }
 
+      this.logger.log(`✅ Fallback Python conversion successful!`);
       return result;
 
     } catch (error) {
+      this.logger.error(`❌ Fallback Python conversion error: ${error.message}`);
+      this.logger.error(`🔍 Full error details: ${JSON.stringify(error, null, 2)}`);
       throw new Error(`Fallback Python conversion failed: ${error.message}`);
     } finally {
-      await fs.unlink(scriptPath).catch(() => {});
+      try {
+        await fs.unlink(scriptPath);
+        this.logger.log(`🧹 Cleaned up fallback Python script: ${scriptPath}`);
+      } catch (cleanupError) {
+        this.logger.warn(`⚠️ Could not clean up fallback script: ${cleanupError.message}`);
+      }
     }
   }
 
@@ -720,29 +809,20 @@ import io
 import tempfile
 from pathlib import Path
 
-def ensure_package(package, import_name=None, extra=""):
-    """Ensure a Python package is installed. Returns True if importable, else tries to install."""
-    import importlib
-    name = import_name or package
+def install_package(package, extra=""):
+    """Install Python package with enhanced error handling"""
     try:
-        importlib.import_module(name)
+        package_spec = f"{package}{extra}"
+        print(f"📦 Installing {package_spec}...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", package_spec, 
+            "--break-system-packages", "--upgrade", "--no-warn-script-location"
+        ])
+        print(f"✅ {package_spec} installed successfully.")
         return True
-    except ImportError:
-        print(f"📦 Installing {package}{extra}...")
-        try:
-            # Suppress pip root warnings
-            env = os.environ.copy()
-            env["PIP_ROOT_USER_ACTION"] = "ignore"
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", f"{package}{extra}", "--upgrade", "--no-warn-script-location"
-            ], env=env)
-            importlib.invalidate_caches()
-            importlib.import_module(name)
-            print(f"✅ {package}{extra} installed successfully.")
-            return True
-        except Exception as e:
-            print(f"❌ Could not install {package}{extra}: {e}")
-            return False
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Could not install {package_spec}: {e}")
+        return False
 
 def premium_convert_to_docx(input_path, output_path):
     """Premium PDF to DOCX conversion using multiple high-quality methods"""
@@ -1169,68 +1249,550 @@ def premium_convert_to_xlsx(input_path, output_path):
         current_row = 1
         data_found = False
         
+        with pdfplumber.open(input_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                # Add page separator if not the first page
+                if page_num > 0 and data_found:
+                    current_row += 1
+                    ws.cell(row=current_row, column=1, value=f"--- PAGE {page_num + 1} ---")
+                    ws.cell(row=current_row, column=1).font = Font(bold=True, color="FF0000")
+                    current_row += 1
+                
+                page_data_found = False
+                
+                # Enhanced table extraction
+                tables = page.extract_tables(table_settings={
+                    "vertical_strategy": "lines_strict",
+                    "horizontal_strategy": "lines_strict",
+                    "intersection_tolerance": 3,
+                    "text_tolerance": 3,
+                    "snap_tolerance": 3,
+                    "join_tolerance": 3
+                })
+                
+                if tables:
+                    for table_idx, table in enumerate(tables):
+                        if table and len(table) > 1:
+                            page_data_found = True
+                            data_found = True
+                            
+                            # Add table separator if multiple tables
+                            if table_idx > 0:
+                                current_row += 1
+                            
+                            # Smart table processing
+                            processed_table = []
+                            for row in table:
+                                processed_row = []
+                                for cell in row:
+                                    if cell:
+                                        # Clean cell content
+                                        clean_cell = re.sub(r'\\s+', ' ', str(cell)).strip()
+                                        processed_row.append(clean_cell)
+                                    else:
+                                        processed_row.append('')
+                                processed_table.append(processed_row)
+                            
+                            # Add to single Excel sheet with formatting
+                            for row in processed_table:
+                                for col_idx, value in enumerate(row, 1):
+                                    cell = ws.cell(row=current_row, column=col_idx, value=value)
+                                    
+                                    # Style first row as header
+                                    if processed_table.index(row) == 0:
+                                        cell.font = Font(bold=True, color="FFFFFF")
+                                        cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+                                    
+                                    cell.border = Border(
+                                        left=Side(border_style="thin"),
+                                        right=Side(border_style="thin"),
+                                        top=Side(border_style="thin"),
+                                        bottom=Side(border_style="thin")
+                                    )
+                                current_row += 1
+                
+                # If no tables, extract structured text data
+                if not tables:
+                    text = page.extract_text()
+                    if text:
+                        # Intelligent text parsing for Excel structure
+                        lines = [line.strip() for line in text.split('\\n') if line.strip()]
+                        if lines:
+                            ws = wb.create_sheet(title=f'Text_Page_{page_num+1}')
+                            
+                            # Detect patterns and structure data intelligently
+                            structured_data = []
+                            current_section = None
+                            
+                            for line in lines:
+                                # Detect potential headers or sections
+                                if re.match(r'^[A-Z][A-Z\\s]{3,}$', line) or ':' in line:
+                                    current_section = line
+                                    structured_data.append(['Section', line])
+                                # Detect key-value pairs
+                                elif ':' in line and len(line.split(':')) == 2:
+                                    key, value = line.split(':', 1)
+                                    structured_data.append([key.strip(), value.strip()])
+                                # Detect numbered lists
+                                elif re.match(r'^\\d+\\.', line):
+                                    structured_data.append(['Item', line])
+                                # Regular content
+                                else:
+                                    structured_data.append(['Content', line])
+                            
+                            # Add structured data to Excel
+                            structured_data.insert(0, ['Type', 'Content'])  # Header
+                            for row_idx, row in enumerate(structured_data, 1):
+                                for col_idx, value in enumerate(row, 1):
+                                    cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                                    
+                                    if row_idx == 1:  # Header
+                                        cell.font = Font(bold=True, color="FFFFFF")
+                                        cell.fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
+                                    
+                                    cell.border = Border(
+                                        left=Side(border_style="thin"),
+                                        right=Side(border_style="thin"),
+                                        top=Side(border_style="thin"),
+                                        bottom=Side(border_style="thin")
+                                    )
+        
+        if len(wb.sheetnames) > 0:
+            wb.save(output_path)
+            print(f"✅ AI-Enhanced pdfplumber conversion successful: {len(wb.sheetnames)} intelligent sheets")
+            return True
+            
+    except ImportError:
+        if (install_package('pdfplumber') and install_package('pandas') and 
+            install_package('openpyxl')):
+            return premium_convert_to_xlsx(input_path, output_path)
+    except Exception as e:
+        print(f"❌ Enhanced pdfplumber fallback failed: {e}")
+    
+    return False
+
+def detect_tabular_patterns(text):
+    """AI-like detection of tabular patterns in text"""
+    detected_tables = []
+    
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    current_table = []
+    
+    for line in lines:
+        # Clean the line
+        clean_line = re.sub(r'\\s+', ' ', line).strip()
+        
+        # Skip very short lines or section headers
+        if len(clean_line) < 5 or re.match(r'^[A-Z\\s]+$', clean_line):
+            # Save current table if it exists
+            if len(current_table) >= 2:
+                detected_tables.append(current_table)
+            current_table = []
+            continue
+        
+        # Look for patterns that suggest tabular data
+        # Pattern 1: Multiple spaces or tabs separating values
+        if re.search(r'\\s{3,}|\\t', clean_line):
+            potential_columns = re.split(r'\\s{3,}|\\t', clean_line)
+            if len(potential_columns) >= 2:
+                current_table.append([col.strip() for col in potential_columns])
+                continue
+        
+        # Pattern 2: Pipe or vertical bar separated
+        if '|' in clean_line and clean_line.count('|') >= 2:
+            potential_columns = clean_line.split('|')
+            if len(potential_columns) >= 3:
+                current_table.append([col.strip() for col in potential_columns if col.strip()])
+                continue
+        
+        # Pattern 3: Comma separated (but be careful with sentences)
+        if clean_line.count(',') >= 2 and len(clean_line) < 100:
+            potential_columns = clean_line.split(',')
+            if len(potential_columns) >= 3 and all(len(col.strip()) < 30 for col in potential_columns):
+                current_table.append([col.strip() for col in potential_columns])
+                continue
+        
+        # Pattern 4: Colon-separated key-value pairs
+        if ':' in clean_line and clean_line.count(':') == 1:
+            key, value = clean_line.split(':', 1)
+            if len(key.strip()) < 50 and len(value.strip()) < 100:
+                current_table.append([key.strip(), value.strip()])
+                continue
+        
+        # Pattern 5: Numbers and text (financial data, etc.)
+        number_pattern = r'\\b\\d+[,.]\\d+\\b|\\b\\d+\\b'
+        if len(re.findall(number_pattern, clean_line)) >= 2:
+            # This might be a data row
+            parts = re.split(r'\\s{2,}', clean_line)
+            if len(parts) >= 2:
+                current_table.append(parts)
+                continue
+        
+        # If we get here and we have a table, save it
+        if len(current_table) >= 2:
+            detected_tables.append(current_table)
+            current_table = []
+    
+    # Don't forget the last table
+    if len(current_table) >= 2:
+        detected_tables.append(current_table)
+    
+    return detected_tables
+
+def extract_structured_text_data(text, page_num):
+    """Extract structured data from text for Excel"""
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    structured_data = [['Data Type', 'Content', 'Context']]  # Header
+    
+    current_section = f"Page {page_num + 1}"
+    
+    for line in lines:
+        clean_line = line.strip()
+        
+        # Section headers (ALL CAPS or title case)
+        if re.match(r'^[A-Z][A-Z\\s]{3,}$', clean_line) or clean_line.isupper():
+            current_section = clean_line
+            structured_data.append(['Section Header', clean_line, f'Page {page_num + 1}'])
+        
+        # Key-value pairs
+        elif ':' in clean_line and clean_line.count(':') == 1:
+            key, value = clean_line.split(':', 1)
+            structured_data.append(['Key-Value', f'{key.strip()}: {value.strip()}', current_section])
+        
+        # Numbered items
+        elif re.match(r'^\\d+[\\.\\)]', clean_line):
+            structured_data.append(['Numbered Item', clean_line, current_section])
+        
+        # Bulleted items
+        elif re.match(r'^[•▪▫○●◦‣⁃-]', clean_line):
+            structured_data.append(['Bullet Point', clean_line, current_section])
+        
+        # Dates
+        elif re.search(r'\\b\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b|\\b\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}\\b', clean_line):
+            structured_data.append(['Date Info', clean_line, current_section])
+        
+        # Numbers/Financial data
+        elif re.search(r'\\$[\\d,]+\\.?\\d*|\\b\\d+[,.]\\d+\\b', clean_line):
+            structured_data.append(['Numeric Data', clean_line, current_section])
+        
+        # Regular text (but only if substantial)
+        elif len(clean_line) > 20:
+            structured_data.append(['Text Content', clean_line[:100] + ('...' if len(clean_line) > 100 else ''), current_section])
+    
+    return structured_data if len(structured_data) > 1 else None
+    
+    return False
+
+def premium_convert_to_pptx(input_path, output_path):
+    """ULTIMATE PDF to PPTX conversion with professional design, smart layout, and multimedia support"""
     print(f"🚀 Starting ULTIMATE PDF to PPTX conversion with advanced AI-like features...")
-    # Ensure dependencies
-    if not (ensure_package('PyMuPDF', 'fitz') and ensure_package('python-pptx', 'pptx')):
-        print("❌ Required packages for PPTX conversion could not be installed.")
-        return False
+    
+    # Method 1: Professional-grade conversion with smart design and layout
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Inches, Pt
-        from pptx.enum.text import PP_ALIGN
+        from pptx.util import Inches, Pt, Cm
+        from pptx.enum.text import PP_ALIGN, WD_ALIGN_PARAGRAPH
         from pptx.dml.color import RGBColor
+        from pptx.enum.shapes import MSO_SHAPE
+        from pptx.enum.dml import MSO_THEME_COLOR
+        from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
         import io
         import re
+        import tempfile
+        import json
+        
+        print("🎨 Using ULTIMATE PyMuPDF + python-pptx (AI-Enhanced Professional Method)...")
+        
         pdf_doc = fitz.open(input_path)
+        
+        # Use a modern professional template
         prs = Presentation()
+        
+        # Set optimal slide dimensions (16:9 widescreen for modern presentations)
         prs.slide_width = Inches(13.33)
         prs.slide_height = Inches(7.5)
-        # Title slide
-        title_slide = prs.slides.add_slide(prs.slide_layouts[0])
-        title_slide.shapes.title.text = "Converted Presentation"
-        if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
-            title_slide.placeholders[1].text = f"Converted from PDF • {len(pdf_doc)} Pages"
-        # For each page, create a slide
+        
+        # Analyze entire document for intelligent content organization
+        document_analysis = {
+            'total_pages': len(pdf_doc),
+            'has_tables': False,
+            'has_images': False,
+            'text_density': 0,
+            'main_topics': [],
+            'color_scheme': {'primary': None, 'secondary': None},
+            'font_hierarchy': {}
+        }
+        
+        # Pre-analyze document for smart organization
+        all_text_content = ""
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
-            text = page.get_text()
-            lines = [line.strip() for line in text.split('\n') if line.strip()]
-            slide = prs.slides.add_slide(prs.slide_layouts[1])
-            # Title
-            slide.shapes.title.text = lines[0] if lines else f"Page {page_num+1}"
-            # Content
-            if len(lines) > 1:
+            page_text = page.get_text()
+            all_text_content += page_text + " "
+            
+            # Check for images
+            if page.get_images():
+                document_analysis['has_images'] = True
+            
+            # Analyze text structure
+            text_dict = page.get_text("dict")
+            blocks = text_dict.get("blocks", [])
+            for block in blocks:
+                if 'lines' in block:
+                    for line in block["lines"]:
+                        for span in line["spans"]:
+                            font_size = span.get('size', 12)
+                            if font_size >= 16:
+                                text = span.get('text', '').strip()
+                                if len(text) > 10 and text not in document_analysis['main_topics']:
+                                    document_analysis['main_topics'].append(text[:50])
+        
+        # Create intelligent title slide
+        title_slide_layout = prs.slide_layouts[0]  # Title Slide
+        title_slide = prs.slides.add_slide(title_slide_layout)
+        
+        # Smart title extraction
+        main_title = "Professional Presentation"
+        subtitle = f"Converted from PDF • {document_analysis['total_pages']} Pages"
+        
+        if document_analysis['main_topics']:
+            main_title = document_analysis['main_topics'][0]
+            if len(document_analysis['main_topics']) > 1:
+                subtitle = document_analysis['main_topics'][1][:100]
+        
+        title_slide.shapes.title.text = main_title
+        if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
+            title_slide.placeholders[1].text = subtitle
+        
+        # Enhanced title formatting
+        title_shape = title_slide.shapes.title
+        title_frame = title_shape.text_frame
+        title_para = title_frame.paragraphs[0]
+        title_para.font.size = Pt(36)
+        title_para.font.bold = True
+        title_para.font.color.rgb = RGBColor(31, 73, 125)  # Professional blue
+        title_para.alignment = PP_ALIGN.CENTER
+        
+        # Create agenda/overview slide if multiple topics
+        if len(document_analysis['main_topics']) > 2:
+            agenda_layout = prs.slide_layouts[1]  # Title and Content
+            agenda_slide = prs.slides.add_slide(agenda_layout)
+            agenda_slide.shapes.title.text = "Overview"
+            
+            content_box = agenda_slide.placeholders[1]
+            text_frame = content_box.text_frame
+            text_frame.clear()
+            
+            for i, topic in enumerate(document_analysis['main_topics'][:8]):  # Max 8 topics
+                para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
+                para.text = f"• {topic}"
+                para.font.size = Pt(18)
+                para.space_after = Pt(12)
+                para.font.color.rgb = RGBColor(68, 84, 106)
+        
+        # Process each page with intelligent content detection and professional formatting
+        for page_num in range(len(pdf_doc)):
+            page = pdf_doc.load_page(page_num)
+            
+            print(f"🔍 Analyzing page {page_num + 1} with AI-enhanced content detection...")
+            
+            # Advanced content analysis with better structure detection
+            text_dict = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)
+            blocks = text_dict.get("blocks", [])
+            
+            # Extract images with enhanced processing
+            image_list = page.get_images()
+            
+            # Advanced content categorization
+            content_structure = {
+                'headings': [],
+                'body_text': [],
+                'bullet_points': [],
+                'quotes': [],
+                'code_blocks': [],
+                'tables': [],
+                'images': [],
+                'charts': []
+            }
+            
+            # Intelligent text analysis
+            for block in blocks:
+                if 'lines' in block:
+                    block_content = {
+                        'text': "",
+                        'font_sizes': [],
+                        'colors': [],
+                        'positions': [],
+                        'formatting': {'bold': False, 'italic': False}
+                    }
+                    
+                    for line in block["lines"]:
+                        line_text = ""
+                        for span in line["spans"]:
+                            text = span['text'].strip()
+                            if text:
+                                line_text += text + " "
+                                block_content['font_sizes'].append(span.get('size', 12))
+                                
+                                # Extract formatting
+                                flags = span.get('flags', 0)
+                                if flags & 2**4:  # Bold
+                                    block_content['formatting']['bold'] = True
+                                if flags & 2**1:  # Italic
+                                    block_content['formatting']['italic'] = True
+                        
+                        if line_text.strip():
+                            block_content['text'] += line_text.strip() + "\\n"
+                    
+                    if block_content['text'].strip():
+                        avg_font_size = sum(block_content['font_sizes']) / len(block_content['font_sizes']) if block_content['font_sizes'] else 12
+                        text_content = block_content['text'].strip()
+                        
+                        # Categorize content intelligently
+                        if avg_font_size >= 18 or block_content['formatting']['bold']:
+                            content_structure['headings'].append({
+                                'text': text_content,
+                                'font_size': avg_font_size,
+                                'formatting': block_content['formatting']
+                            })
+                        elif text_content.startswith(('•', '-', '*', '○', '▪', '▫')) or '\\n•' in text_content:
+                            # Split bullet points
+                            bullets = [line.strip() for line in text_content.split('\\n') if line.strip()]
+                            content_structure['bullet_points'].extend(bullets)
+                        elif text_content.startswith(('"', '"', '"')) or 'said' in text_content.lower():
+                            content_structure['quotes'].append(text_content)
+                        elif any(keyword in text_content.lower() for keyword in ['def ', 'function', 'class ', 'import ', 'return']):
+                            content_structure['code_blocks'].append(text_content)
+                        else:
+                            content_structure['body_text'].append({
+                                'text': text_content,
+                                'font_size': avg_font_size
+                            })
+            
+            # Process images with professional handling
+            if image_list:
+                print(f"📸 Processing {len(image_list)} images with professional enhancement...")
+                for img_index, img in enumerate(image_list):
+                    try:
+                        xref = img[0]
+                        pix = fitz.Pixmap(pdf_doc, xref)
+                        
+                        if pix.n - pix.alpha < 4:  # Valid image
+                            img_data = pix.tobytes("png")
+                            
+                            # Analyze image for better categorization
+                            img_width, img_height = pix.width, pix.height
+                            aspect_ratio = img_width / img_height
+                            
+                            img_info = {
+                                'data': img_data,
+                                'width': img_width,
+                                'height': img_height,
+                                'aspect_ratio': aspect_ratio,
+                                'type': 'chart' if aspect_ratio > 1.5 else 'image'
+                            }
+                            
+                            if img_info['type'] == 'chart':
+                                content_structure['charts'].append(img_info)
+                            else:
+                                content_structure['images'].append(img_info)
+                        
+                        pix = None
+                    except Exception as img_error:
+                        print(f"⚠️ Image processing error: {img_error}")
+            
+            # Create intelligent slide layout based on content analysis
+            slide = None
+            
+            if content_structure['charts'] and content_structure['headings']:
+                # Chart/data slide
+                slide_layout = prs.slide_layouts[8] if len(prs.slide_layouts) > 8 else prs.slide_layouts[5]
+                slide = prs.slides.add_slide(slide_layout)
+                print(f"📊 Creating chart/data slide for page {page_num + 1}")
+                
+            elif len(content_structure['bullet_points']) > 3:
+                # Bullet point slide
+                slide_layout = prs.slide_layouts[1]  # Title and Content
+                slide = prs.slides.add_slide(slide_layout)
+                print(f"📝 Creating bullet point slide for page {page_num + 1}")
+                
+            elif content_structure['images'] and content_structure['body_text']:
+                # Mixed content slide
+                slide_layout = prs.slide_layouts[4] if len(prs.slide_layouts) > 4 else prs.slide_layouts[6]
+                slide = prs.slides.add_slide(slide_layout)
+                print(f"🖼️ Creating mixed content slide for page {page_num + 1}")
+                
+            elif content_structure['quotes']:
+                # Quote slide
+                slide_layout = prs.slide_layouts[2] if len(prs.slide_layouts) > 2 else prs.slide_layouts[1]
+                slide = prs.slides.add_slide(slide_layout)
+                print(f"💬 Creating quote slide for page {page_num + 1}")
+                
+            else:
+                # Default content slide
+                slide_layout = prs.slide_layouts[1]  # Title and Content
+                slide = prs.slides.add_slide(slide_layout)
+                print(f"📄 Creating standard content slide for page {page_num + 1}")
+            
+            # Set slide title intelligently
+            slide_title = f"Page {page_num + 1}"
+            if content_structure['headings']:
+                slide_title = content_structure['headings'][0]['text'][:60]
+            elif content_structure['body_text']:
+                first_sentence = content_structure['body_text'][0]['text'].split('.')[0]
+                if len(first_sentence) < 80:
+                    slide_title = first_sentence
+            
+            if slide.shapes.title:
+                slide.shapes.title.text = slide_title
+                
+                # Professional title formatting
+                title_frame = slide.shapes.title.text_frame
+                title_para = title_frame.paragraphs[0]
+                title_para.font.size = Pt(28)
+                title_para.font.bold = True
+                title_para.font.color.rgb = RGBColor(31, 73, 125)
+            
+            # Add content based on structure
+            content_added = False
+            
+            # Handle bullet points professionally
+            if content_structure['bullet_points'] and len(slide.placeholders) > 1:
                 content_box = slide.placeholders[1]
                 text_frame = content_box.text_frame
                 text_frame.clear()
-                for i, line in enumerate(lines[1:]):
-                    para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                    para.text = line
-                    para.font.size = Pt(14)
-            # If no text, add image of page
-            if not lines:
-                blank_slide = prs.slides.add_slide(prs.slide_layouts[6])
-                mat = fitz.Matrix(2.5, 2.5)
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                img_data = pix.tobytes("png")
-                image_stream = io.BytesIO(img_data)
-                blank_slide.shapes.add_picture(image_stream, 0, 0, prs.slide_width, prs.slide_height)
-        prs.save(output_path)
-        pdf_doc.close()
-        # Validate output
-        if not os.path.exists(output_path):
-            print(f"❌ Output PPTX not created: {output_path}")
-            return False
-        size = os.path.getsize(output_path)
-        if size < 10000:
-            print(f"❌ Output PPTX too small: {size} bytes. Conversion failed or PDF had no content.")
-            return False
-        print(f"✅ PPTX conversion successful: {size} bytes")
-        return True
-    except Exception as e:
-        print(f"❌ PPTX conversion failed: {e}")
-        return False
+                
+                for i, bullet in enumerate(content_structure['bullet_points'][:8]):  # Limit bullets
+                    clean_bullet = bullet.lstrip('•-*○▪▫ ').strip()
+                    if clean_bullet:
+                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
+                        para.text = clean_bullet
+                        para.font.size = Pt(16)
+                        para.space_after = Pt(8)
+                        para.level = 0
+                        para.font.color.rgb = RGBColor(68, 84, 106)
+                
+                content_added = True
+            
+            # Handle body text professionally
+            elif content_structure['body_text'] and not content_added:
+                if len(slide.placeholders) > 1:
+                    content_box = slide.placeholders[1]
+                    text_frame = content_box.text_frame
+                    text_frame.clear()
+                    
+                    # Combine and format body text
+                    combined_text = ""
+                    for text_item in content_structure['body_text'][:3]:  # Limit text blocks
+                        combined_text += text_item['text'] + "\\n\\n"
+                    
+                    # Smart paragraph splitting
+                    paragraphs = [p.strip() for p in combined_text.split('\\n\\n') if p.strip()]
+                    
+                    for i, para_text in enumerate(paragraphs[:4]):  # Max 4 paragraphs
+                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
+                        para.text = para_text
                         para.font.size = Pt(14)
                         para.space_after = Pt(10)
                         para.font.color.rgb = RGBColor(68, 84, 106)
