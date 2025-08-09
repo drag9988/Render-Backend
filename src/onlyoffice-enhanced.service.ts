@@ -839,8 +839,8 @@ def premium_convert_to_docx(input_path, output_path):
     return False
 
 def premium_convert_to_xlsx(input_path, output_path):
-    """ULTIMATE PDF to XLSX conversion with AI-enhanced table detection and data intelligence"""
-    print(f"🚀 Starting ULTIMATE PDF to XLSX conversion with advanced AI-like features...")
+    """ULTIMATE PDF to XLSX conversion with AI-enhanced table detection - SINGLE SHEET VERSION"""
+    print(f"🚀 Starting ULTIMATE PDF to XLSX conversion (Single Sheet Mode)...")
     
     # Method 1: ULTIMATE pdfplumber with intelligent data structuring (MOST RELIABLE)
     try:
@@ -850,10 +850,12 @@ def premium_convert_to_xlsx(input_path, output_path):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, NamedStyle
         
-        print("🧠 Using ULTIMATE pdfplumber (AI-Enhanced Table & Data Detection)...")
+        print("🧠 Using ULTIMATE pdfplumber (AI-Enhanced Single Sheet Mode)...")
         
         wb = Workbook()
-        wb.remove(wb.active)
+        # Create a single sheet for all data
+        ws = wb.active
+        ws.title = "PDF_Data_Consolidated"
         
         # Professional styling
         header_style = NamedStyle(name="header")
@@ -876,25 +878,30 @@ def premium_convert_to_xlsx(input_path, output_path):
         )
         data_style.alignment = Alignment(wrap_text=True, vertical="center")
         
-        # Create single consolidated sheet
-        ws = wb.create_sheet(title="Consolidated_Data")
-        wb.remove(wb.active)  # Remove default sheet
-        sheet_created = False
+        page_separator_style = NamedStyle(name="page_separator")
+        page_separator_style.font = Font(bold=True, color="FFFFFF", size=11)
+        page_separator_style.fill = PatternFill(start_color="FF6B6B", end_color="FF6B6B", fill_type="solid")
+        page_separator_style.alignment = Alignment(horizontal="center", vertical="center")
+        
         current_row = 1
+        max_cols_global = 0
+        data_found = False
         
         with pdfplumber.open(input_path) as pdf:
             for page_num, page in enumerate(pdf.pages):
                 print(f"🔍 Analyzing page {page_num + 1} with ULTIMATE table detection...")
                 
-                # Add page separator if not first page
-                if page_num > 0:
-                    # Add blank row
+                # Add page separator if not the first page
+                if page_num > 0 and data_found:
+                    # Add empty row for spacing
                     current_row += 1
-                    # Add page marker
-                    page_marker_cell = ws.cell(row=current_row, column=1, value=f"=== PAGE {page_num + 1} ===")
-                    page_marker_cell.font = Font(bold=True, size=14, color="FF0000")
-                    page_marker_cell.fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
-                    current_row += 2
+                    # Add page separator row
+                    ws.cell(row=current_row, column=1, value=f"--- PAGE {page_num + 1} ---")
+                    ws.cell(row=current_row, column=1).style = page_separator_style
+                    ws.merge_cells(f'A{current_row}:Z{current_row}')  # Merge across multiple columns
+                    current_row += 1
+                
+                page_data_found = False
                 
                 # SUPER-ENHANCED table extraction with multiple detection methods
                 tables_found = []
@@ -913,7 +920,7 @@ def premium_convert_to_xlsx(input_path, output_path):
                         "min_words_horizontal": 1
                     })
                     if tables_precise:
-                        tables_found.extend([(table, f"Precise_P{page_num+1}_T{i+1}") for i, table in enumerate(tables_precise)])
+                        tables_found.extend(tables_precise)
                         print(f"📊 ULTIMATE precise detection found {len(tables_precise)} tables")
                 except Exception as e:
                     print(f"⚠️ Precise method: {e}")
@@ -930,7 +937,7 @@ def premium_convert_to_xlsx(input_path, output_path):
                             "join_tolerance": 5
                         })
                         if tables_relaxed:
-                            tables_found.extend([(table, f"Smart_P{page_num+1}_T{i+1}") for i, table in enumerate(tables_relaxed)])
+                            tables_found.extend(tables_relaxed)
                             print(f"🎯 ULTIMATE smart detection found {len(tables_relaxed)} tables")
                     except Exception as e:
                         print(f"⚠️ Smart method: {e}")
@@ -943,21 +950,20 @@ def premium_convert_to_xlsx(input_path, output_path):
                             # ULTIMATE pattern-based table detection
                             detected_tables = detect_tabular_patterns(text)
                             if detected_tables:
-                                tables_found.extend([(table, f"AI_P{page_num+1}_T{i+1}") for i, table in enumerate(detected_tables)])
+                                tables_found.extend(detected_tables)
                                 print(f"🤖 ULTIMATE AI pattern detection found {len(detected_tables)} data structures")
                     except Exception as e:
                         print(f"⚠️ AI pattern method: {e}")
                 
-                # Process all found tables and add to consolidated sheet
-                for table_idx, (table, table_name) in enumerate(tables_found):
+                # Process all found tables and add to single sheet
+                for table_idx, table in enumerate(tables_found):
                     if table and len(table) > 1:
-                        sheet_created = True
+                        page_data_found = True
+                        data_found = True
                         
                         # Add table separator if multiple tables on same page
                         if table_idx > 0:
-                            table_separator_cell = ws.cell(row=current_row, column=1, value=f"--- {table_name} ---")
-                            table_separator_cell.font = Font(bold=True, italic=True, color="0066CC")
-                            current_row += 1
+                            current_row += 1  # Add spacing
                         
                         # ULTIMATE table processing
                         processed_table = []
@@ -976,22 +982,25 @@ def premium_convert_to_xlsx(input_path, output_path):
                             processed_table.append(processed_row)
                             max_cols = max(max_cols, len(processed_row))
                         
+                        # Update global max columns
+                        max_cols_global = max(max_cols_global, max_cols)
+                        
                         # Normalize all rows to have the same number of columns
                         for row in processed_table:
                             while len(row) < max_cols:
                                 row.append('')
                         
-                        # Add to consolidated Excel sheet with ULTIMATE formatting
+                        # Add to single Excel sheet with ULTIMATE formatting
                         for row_idx, row in enumerate(processed_table):
                             for col_idx, value in enumerate(row, 1):
                                 cell = ws.cell(row=current_row, column=col_idx, value=value)
                                 
                                 # ULTIMATE styling
-                                if row_idx == 0 and table_idx == 0 and page_num == 0:  # First header only
+                                if row_idx == 0 and table_idx == 0 and page_num == 0:  # Very first header
                                     cell.style = header_style
-                                elif row_idx == 0:  # Other headers - different style
-                                    cell.font = Font(bold=True, color="FFFFFF")
-                                    cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+                                elif row_idx == 0:  # Other table headers
+                                    cell.font = Font(bold=True, color="000000")
+                                    cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
                                     cell.border = Border(
                                         left=Side(border_style="thin"),
                                         right=Side(border_style="thin"),
@@ -1009,48 +1018,54 @@ def premium_convert_to_xlsx(input_path, output_path):
                             
                             current_row += 1
                         
-                        current_row += 1  # Extra space after each table
-                        print(f"✅ ULTIMATE table processed: {len(processed_table)} rows × {max_cols} columns")
+                        print(f"✅ ULTIMATE table processed: {len(processed_table)} rows × {max_cols} columns (Row {current_row - len(processed_table)} to {current_row - 1})")
                 
                 # If no tables found, extract structured text data
-                if not tables_found:
+                if not page_data_found:
                     try:
                         text = page.extract_text()
                         if text and len(text.strip()) > 50:
                             structured_data = extract_structured_text_data(text, page_num)
                             if structured_data:
-                                sheet_created = True
+                                data_found = True
                                 
-                                # Add text data separator
-                                text_separator_cell = ws.cell(row=current_row, column=1, value=f"--- Text Data from Page {page_num + 1} ---")
-                                text_separator_cell.font = Font(bold=True, italic=True, color="006600")
-                                current_row += 1
-                                
-                                # Add structured text data to consolidated sheet
-                                for row_idx, row in enumerate(structured_data):
-                                    for col_idx, value in enumerate(row, 1):
+                                # Add text data header if this is the first data
+                                if current_row == 1:
+                                    # Add header for text data
+                                    header_row = ['Data Type', 'Content', 'Context']
+                                    for col_idx, value in enumerate(header_row, 1):
                                         cell = ws.cell(row=current_row, column=col_idx, value=value)
-                                        if row_idx == 0:
-                                            cell.font = Font(bold=True, color="FFFFFF")
-                                            cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
-                                        else:
-                                            cell.style = data_style
+                                        cell.style = header_style
                                     current_row += 1
                                 
-                                current_row += 1  # Extra space
-                                print(f"📝 ULTIMATE text extraction: {len(structured_data)} structured data rows")
+                                # Add structured text data to single sheet
+                                for row in structured_data[1:]:  # Skip the header from structured_data
+                                    for col_idx, value in enumerate(row, 1):
+                                        cell = ws.cell(row=current_row, column=col_idx, value=value)
+                                        cell.style = data_style
+                                        
+                                        # Auto-sizing
+                                        column_letter = cell.column_letter
+                                        current_width = ws.column_dimensions[column_letter].width or 12
+                                        if value and len(str(value)) > current_width:
+                                            ws.column_dimensions[column_letter].width = min(len(str(value)) + 3, 80)
+                                    current_row += 1
+                                
+                                print(f"📝 ULTIMATE text extraction: {len(structured_data) - 1} structured data rows added")
                     except Exception as e:
                         print(f"⚠️ Text extraction: {e}")
         
-        if sheet_created:
-            # Add filters to header row (first row only)
-            if current_row > 1:
-                ws.freeze_panes = 'A2'  # Freeze first header
-                ws.auto_filter.ref = f"A1:{ws.cell(row=1, column=ws.max_column).coordinate}"
-        
-        if sheet_created:
+        # Apply final formatting to the single sheet
+        if data_found:
+            # Freeze first row if there's data
+            ws.freeze_panes = 'A2'
+            
+            # Add auto-filter to the entire data range
+            if current_row > 1 and max_cols_global > 0:
+                ws.auto_filter.ref = f"A1:{ws.cell(row=current_row-1, column=max_cols_global).coordinate}"
+            
             wb.save(output_path)
-            print(f"✅ ULTIMATE pdfplumber conversion successful: {len(wb.sheetnames)} professional sheets")
+            print(f"✅ ULTIMATE pdfplumber conversion successful: Single consolidated sheet with {current_row-1} total rows")
             return True
             
     except ImportError:
@@ -1092,20 +1107,20 @@ def premium_convert_to_xlsx(input_path, output_path):
         
         if all_tables:
             wb = Workbook()
-            ws = wb.create_sheet(title="Consolidated_Tabula_Data")
-            wb.remove(wb.active)  # Remove default sheet
+            # Use single sheet for all Tabula data
+            ws = wb.active
+            ws.title = "PDF_Tabula_Data"
+            
             current_row = 1
             
             for table_idx, (table, method, idx) in enumerate(all_tables):
                 if not table.empty and table.shape[0] > 1:
-                    
-                    # Add method separator if not first table
+                    # Add separator if not first table
                     if table_idx > 0:
+                        current_row += 1  # Add spacing
+                        ws.cell(row=current_row, column=1, value=f"--- {method} Table {idx+1} ---")
+                        ws.cell(row=current_row, column=1).font = Font(bold=True)
                         current_row += 1
-                        separator_cell = ws.cell(row=current_row, column=1, value=f"=== {method} Method - Table {idx+1} ===")
-                        separator_cell.font = Font(bold=True, size=12, color="FF6600")
-                        separator_cell.fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-                        current_row += 2
                     
                     # Clean and add data
                     table_clean = table.dropna(how='all').dropna(axis=1, how='all')
@@ -1117,16 +1132,9 @@ def premium_convert_to_xlsx(input_path, output_path):
                                 cell.font = Font(bold=True, color="FFFFFF")
                                 cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
                         current_row += 1
-                    
-                    current_row += 1  # Extra space after each table
-            
-            # Add filters to first row
-            if current_row > 1:
-                ws.freeze_panes = 'A2'
-                ws.auto_filter.ref = f"A1:{ws.cell(row=1, column=ws.max_column).coordinate}"
             
             wb.save(output_path)
-            print(f"✅ Advanced Tabula conversion successful: {len(all_tables)} tables")
+            print(f"✅ Advanced Tabula conversion successful: Single sheet with {len(all_tables)} tables consolidated")
             return True
             
     except ImportError:
@@ -1142,13 +1150,27 @@ def premium_convert_to_xlsx(input_path, output_path):
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
         
-        print("🧠 Using Enhanced pdfplumber fallback...")
+        print("🧠 Using Enhanced pdfplumber fallback (Single Sheet Mode)...")
         
         wb = Workbook()
-        wb.remove(wb.active)
+        # Use single sheet for fallback method too
+        ws = wb.active
+        ws.title = "PDF_Fallback_Data"
+        
+        current_row = 1
+        data_found = False
         
         with pdfplumber.open(input_path) as pdf:
             for page_num, page in enumerate(pdf.pages):
+                # Add page separator if not the first page
+                if page_num > 0 and data_found:
+                    current_row += 1
+                    ws.cell(row=current_row, column=1, value=f"--- PAGE {page_num + 1} ---")
+                    ws.cell(row=current_row, column=1).font = Font(bold=True, color="FF0000")
+                    current_row += 1
+                
+                page_data_found = False
+                
                 # Enhanced table extraction
                 tables = page.extract_tables(table_settings={
                     "vertical_strategy": "lines_strict",
@@ -1162,7 +1184,12 @@ def premium_convert_to_xlsx(input_path, output_path):
                 if tables:
                     for table_idx, table in enumerate(tables):
                         if table and len(table) > 1:
-                            ws = wb.create_sheet(title=f'P{page_num+1}_T{table_idx+1}')
+                            page_data_found = True
+                            data_found = True
+                            
+                            # Add table separator if multiple tables
+                            if table_idx > 0:
+                                current_row += 1
                             
                             # Smart table processing
                             processed_table = []
@@ -1177,13 +1204,13 @@ def premium_convert_to_xlsx(input_path, output_path):
                                         processed_row.append('')
                                 processed_table.append(processed_row)
                             
-                            # Add to Excel with formatting
-                            for row_idx, row in enumerate(processed_table, 1):
+                            # Add to single Excel sheet with formatting
+                            for row in processed_table:
                                 for col_idx, value in enumerate(row, 1):
-                                    cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                                    cell = ws.cell(row=current_row, column=col_idx, value=value)
                                     
                                     # Style first row as header
-                                    if row_idx == 1:
+                                    if processed_table.index(row) == 0:
                                         cell.font = Font(bold=True, color="FFFFFF")
                                         cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
                                     
@@ -1193,6 +1220,7 @@ def premium_convert_to_xlsx(input_path, output_path):
                                         top=Side(border_style="thin"),
                                         bottom=Side(border_style="thin")
                                     )
+                                current_row += 1
                 
                 # If no tables, extract structured text data
                 if not tables:
