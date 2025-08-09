@@ -517,31 +517,16 @@ export class OnlyOfficeEnhancedService {
 
       const startTime = Date.now();
       const { stdout, stderr } = await execAsync(command, { 
-        timeout: Math.max(this.timeout, 300000), // At least 5 minutes for premium conversion
-        maxBuffer: 1024 * 1024 * 50, // Increase buffer to 50MB for large outputs
-        killSignal: 'SIGKILL' // Use SIGKILL for more forceful termination if needed
+        timeout: this.timeout,
+        maxBuffer: 1024 * 1024 * 20 // 20MB buffer for large outputs
       });
       const endTime = Date.now();
       
       this.logger.log(`⏱️ Python execution time: ${endTime - startTime}ms`);
 
-      // Log Python execution with progress tracking
+      // Log all output for debugging
       if (stderr) {
-        // Filter out pip warnings to reduce noise
-        const filteredStderr = stderr
-          .split('\n')
-          .filter(line => 
-            !line.includes('pip as the \'root\' user') && 
-            !line.includes('WARNING: Running pip') &&
-            !line.includes('https://pip.pypa.io/warnings/venv') &&
-            line.trim() !== ''
-          )
-          .join('\n');
-        
-        if (filteredStderr) {
-          this.logger.log(`🔍 Premium Python stderr (filtered): ${filteredStderr}`);
-        }
-        
+        this.logger.log(`🔍 Premium Python stderr (full): ${stderr}`);
         if (!stderr.includes('Warning') && !stderr.includes('INFO') && !stderr.includes('pip as the \'root\' user')) {
           this.logger.warn(`❗ Premium Python stderr (non-warning): ${stderr}`);
         }
@@ -747,9 +732,8 @@ export class OnlyOfficeEnhancedService {
 
       const startTime = Date.now();
       const { stdout, stderr } = await execAsync(command, { 
-        timeout: Math.max(this.timeout, 180000), // At least 3 minutes for fallback conversion
-        maxBuffer: 1024 * 1024 * 30, // Increase buffer to 30MB
-        killSignal: 'SIGKILL' // Use SIGKILL for more forceful termination if needed
+        timeout: this.timeout,
+        maxBuffer: 1024 * 1024 * 15 // 15MB buffer
       });
       const endTime = Date.now();
       
@@ -826,23 +810,13 @@ import tempfile
 from pathlib import Path
 
 def install_package(package, extra=""):
-    """Install Python package with enhanced error handling - only if not already installed"""
+    """Install Python package with enhanced error handling"""
     try:
-        # First check if package is already installed
-        package_name = package.split('==')[0].split('>=')[0].split('<=')[0]  # Get base package name
-        import importlib
-        try:
-            importlib.import_module(package_name)
-            print(f"✅ {package_name} already installed, skipping.")
-            return True
-        except ImportError:
-            pass  # Package not installed, proceed to install
-        
         package_spec = f"{package}{extra}"
         print(f"📦 Installing {package_spec}...")
         subprocess.check_call([
             sys.executable, "-m", "pip", "install", package_spec, 
-            "--break-system-packages", "--upgrade", "--no-warn-script-location", "--quiet"
+            "--break-system-packages", "--upgrade", "--no-warn-script-location"
         ])
         print(f"✅ {package_spec} installed successfully.")
         return True
@@ -2061,19 +2035,6 @@ def convert_pdf(input_path, output_path, format_type):
     if not os.path.exists(input_path):
         print(f"❌ Input file not found: {input_path}")
         return False
-    
-    # Install all required packages once at the beginning
-    print("📦 Ensuring all required packages are installed...")
-    packages_to_install = ['PyMuPDF', 'python-pptx', 'python-docx', 'openpyxl', 'Pillow']
-    try:
-        install_package('pdf2docx')  # Try to install pdf2docx if not present
-    except:
-        pass
-    
-    for package in packages_to_install:
-        install_package(package)
-    
-    print("✅ Package installation check complete.")
     
     success = False
     if format_type == 'docx':
