@@ -516,8 +516,10 @@ export class OnlyOfficeEnhancedService {
       this.logger.log(`� Executing command: ${command}`);
 
       const startTime = Date.now();
+      // Use optimized timeout for premium conversion (90 seconds)
+      const optimizedTimeout = 90000; // 90 seconds for premium method
       const { stdout, stderr } = await execAsync(command, { 
-        timeout: this.timeout,
+        timeout: optimizedTimeout,
         maxBuffer: 1024 * 1024 * 20 // 20MB buffer for large outputs
       });
       const endTime = Date.now();
@@ -794,13 +796,12 @@ export class OnlyOfficeEnhancedService {
   }
 
   /**
-   * Generate Premium Python script with the best conversion libraries
+   * Generate Premium Python script with the best conversion libraries - OPTIMIZED
    */
   private generatePremiumPythonScript(): string {
     return `#!/usr/bin/env python3
 """
-Premium PDF Converter - Best Quality PDF to Office Conversion
-Uses the most advanced Python libraries for superior results
+OPTIMIZED Premium PDF Converter - Fast & Reliable PDF to Office Conversion
 """
 import sys
 import os
@@ -810,21 +811,217 @@ import tempfile
 from pathlib import Path
 
 def install_package(package, extra=""):
-    """Install Python package with enhanced error handling"""
+    """Install Python package with timeout protection"""
     try:
         package_spec = f"{package}{extra}"
         print(f"📦 Installing {package_spec}...")
         subprocess.check_call([
             sys.executable, "-m", "pip", "install", package_spec, 
-            "--break-system-packages", "--upgrade", "--no-warn-script-location"
-        ])
+            "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"
+        ], timeout=60)  # 60 second timeout for package installation
         print(f"✅ {package_spec} installed successfully.")
         return True
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         print(f"❌ Could not install {package_spec}: {e}")
         return False
 
-def premium_convert_to_docx(input_path, output_path):
+# Install essential packages only - no complex dependencies
+print("🔄 Installing essential packages...")
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pdf2docx", 
+                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
+    print("✅ pdf2docx installed")
+except:
+    print("⚠️ pdf2docx install failed")
+
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF", 
+                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
+    print("✅ PyMuPDF installed")
+except:
+    print("⚠️ PyMuPDF install failed")
+
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "python-pptx", 
+                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
+    print("✅ python-pptx installed")
+except:
+    print("⚠️ python-pptx install failed")
+
+try:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl", 
+                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
+    print("✅ openpyxl installed")
+except:
+    print("⚠️ openpyxl install failed")
+
+def simple_convert_to_docx(input_path, output_path):
+    """Fast PDF to DOCX conversion"""
+    # Try pdf2docx first - fastest method
+    try:
+        from pdf2docx import Converter
+        print("📄 Using pdf2docx...")
+        cv = Converter(input_path)
+        cv.convert(output_path)
+        cv.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            print(f"✅ pdf2docx success: {os.path.getsize(output_path)} bytes")
+            return True
+    except Exception as e:
+        print(f"❌ pdf2docx failed: {e}")
+    
+    # Fallback to PyMuPDF
+    try:
+        import fitz
+        from docx import Document
+        
+        print("📝 Using PyMuPDF fallback...")
+        pdf_doc = fitz.open(input_path)
+        doc = Document()
+        
+        for page_num in range(min(20, len(pdf_doc))):  # Limit to 20 pages for speed
+            page = pdf_doc.load_page(page_num)
+            text = page.get_text()
+            
+            if page_num > 0:
+                doc.add_page_break()
+            
+            if text.strip():
+                doc.add_paragraph(text)
+        
+        doc.save(output_path)
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            print(f"✅ PyMuPDF success: {os.path.getsize(output_path)} bytes")
+            return True
+    except Exception as e:
+        print(f"❌ PyMuPDF failed: {e}")
+    
+    return False
+
+def simple_convert_to_xlsx(input_path, output_path):
+    """Fast PDF to XLSX conversion"""
+    try:
+        import fitz
+        from openpyxl import Workbook
+        
+        print("📊 Converting to Excel...")
+        pdf_doc = fitz.open(input_path)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "PDF_Data"
+        
+        row = 1
+        for page_num in range(min(10, len(pdf_doc))):  # Limit to 10 pages for speed
+            page = pdf_doc.load_page(page_num)
+            text = page.get_text()
+            
+            if text.strip():
+                lines = [line.strip() for line in text.split('\\n') if line.strip()]
+                for line in lines[:50]:  # Limit lines per page
+                    # Simple column detection
+                    if '\\t' in line:
+                        cols = line.split('\\t')
+                    elif '  ' in line:
+                        cols = line.split('  ')
+                    else:
+                        cols = [line]
+                    
+                    for col_idx, col_value in enumerate(cols[:10], 1):  # Max 10 columns
+                        ws.cell(row=row, column=col_idx, value=col_value.strip())
+                    row += 1
+                    
+                    if row > 1000:  # Limit total rows
+                        break
+            
+            if row > 1000:
+                break
+        
+        wb.save(output_path)
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            print(f"✅ Excel conversion success: {os.path.getsize(output_path)} bytes")
+            return True
+    except Exception as e:
+        print(f"❌ Excel conversion failed: {e}")
+    
+    return False
+
+def simple_convert_to_pptx(input_path, output_path):
+    """Fast PDF to PPTX conversion"""
+    try:
+        import fitz
+        from pptx import Presentation
+        from pptx.util import Inches
+        
+        print("🎯 Converting to PowerPoint...")
+        pdf_doc = fitz.open(input_path)
+        prs = Presentation()
+        
+        for page_num in range(min(15, len(pdf_doc))):  # Limit to 15 slides for speed
+            page = pdf_doc.load_page(page_num)
+            text = page.get_text()
+            
+            # Create slide
+            slide_layout = prs.slide_layouts[1]  # Title and Content
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Add title
+            title = slide.shapes.title
+            title.text = f"Page {page_num + 1}"
+            
+            # Add content
+            if text.strip():
+                content = slide.placeholders[1]
+                text_frame = content.text_frame
+                text_frame.text = text[:500]  # Limit text length
+        
+        prs.save(output_path)
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            print(f"✅ PowerPoint conversion success: {os.path.getsize(output_path)} bytes")
+            return True
+    except Exception as e:
+        print(f"❌ PowerPoint conversion failed: {e}")
+    
+    return False
+
+def convert_pdf(input_path, output_path, format_type):
+    """Main conversion function - optimized for speed"""
+    print(f"🚀 Starting OPTIMIZED conversion: {format_type}")
+    print(f"📂 Input: {input_path}")
+    print(f"📁 Output: {output_path}")
+    
+    if not os.path.exists(input_path):
+        print(f"❌ Input file not found: {input_path}")
+        return False
+    
+    file_size = os.path.getsize(input_path)
+    print(f"📊 Input file size: {file_size} bytes")
+    
+    success = False
+    
+    if format_type == 'docx':
+        success = simple_convert_to_docx(input_path, output_path)
+    elif format_type == 'xlsx':
+        success = simple_convert_to_xlsx(input_path, output_path)
+    elif format_type == 'pptx':
+        success = simple_convert_to_pptx(input_path, output_path)
+    else:
+        print(f"❌ Unsupported format: {format_type}")
+        return False
+    
+    if success and os.path.exists(output_path):
+        file_size = os.path.getsize(output_path)
+        print(f"🎉 OPTIMIZED CONVERSION COMPLETED! Output: {file_size} bytes")
+        return True
+    else:
+        print(f"❌ Optimized conversion failed for {format_type}")
+        return False
     """Premium PDF to DOCX conversion using multiple high-quality methods"""
     print(f"🚀 Starting PREMIUM PDF to DOCX conversion...")
     
