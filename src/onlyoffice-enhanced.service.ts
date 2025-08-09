@@ -1395,508 +1395,265 @@ def extract_structured_text_data(text, page_num):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """ULTIMATE PDF to PPTX conversion with professional design, smart layout, and multimedia support"""
-    print(f"🚀 Starting ULTIMATE PDF to PPTX conversion with advanced AI-like features...")
+    """Enhanced PDF to PPTX conversion with robust error handling and fallback methods"""
+    print(f"🚀 Starting ENHANCED PDF to PPTX conversion...")
     
-    # Method 1: Professional-grade conversion with smart design and layout
+    # Method 1: Simple but reliable PyMuPDF + python-pptx conversion
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Cm
-        from pptx.enum.text import PP_ALIGN, WD_ALIGN_PARAGRAPH
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN
         from pptx.dml.color import RGBColor
-        from pptx.enum.shapes import MSO_SHAPE
-        from pptx.enum.dml import MSO_THEME_COLOR
-        from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
         import io
-        import re
-        import tempfile
-        import json
         
-        print("🎨 Using ULTIMATE PyMuPDF + python-pptx (AI-Enhanced Professional Method)...")
+        print("🎨 Using PyMuPDF + python-pptx (Enhanced Method)...")
         
         pdf_doc = fitz.open(input_path)
-        
-        # Use a modern professional template
         prs = Presentation()
         
-        # Set optimal slide dimensions (16:9 widescreen for modern presentations)
+        # Set modern widescreen dimensions
         prs.slide_width = Inches(13.33)
         prs.slide_height = Inches(7.5)
         
-        # Analyze entire document for intelligent content organization
-        document_analysis = {
-            'total_pages': len(pdf_doc),
-            'has_tables': False,
-            'has_images': False,
-            'text_density': 0,
-            'main_topics': [],
-            'color_scheme': {'primary': None, 'secondary': None},
-            'font_hierarchy': {}
-        }
+        # Create title slide
+        if len(pdf_doc) > 0:
+            title_layout = prs.slide_layouts[0]  # Title Slide
+            title_slide = prs.slides.add_slide(title_layout)
+            
+            first_page = pdf_doc.load_page(0)
+            first_text = first_page.get_text()
+            lines = [line.strip() for line in first_text.split('\\n') if line.strip()]
+            
+            if lines:
+                title_slide.shapes.title.text = lines[0][:100] if lines[0] else "Converted from PDF"
+                if len(lines) > 1 and hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
+                    subtitle = ' '.join(lines[1:3])[:150]
+                    title_slide.placeholders[1].text = subtitle
+            else:
+                title_slide.shapes.title.text = "PDF Presentation"
+                if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
+                    title_slide.placeholders[1].text = f"Total Pages: {len(pdf_doc)}"
         
-        # Pre-analyze document for smart organization
-        all_text_content = ""
+        # Process each page
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
+            
+            print(f"📄 Processing page {page_num + 1}/{len(pdf_doc)}...")
+            
+            # Extract text content
             page_text = page.get_text()
-            all_text_content += page_text + " "
+            text_lines = [line.strip() for line in page_text.split('\\n') if line.strip()]
             
-            # Check for images
-            if page.get_images():
-                document_analysis['has_images'] = True
-            
-            # Analyze text structure
-            text_dict = page.get_text("dict")
-            blocks = text_dict.get("blocks", [])
-            for block in blocks:
-                if 'lines' in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            font_size = span.get('size', 12)
-                            if font_size >= 16:
-                                text = span.get('text', '').strip()
-                                if len(text) > 10 and text not in document_analysis['main_topics']:
-                                    document_analysis['main_topics'].append(text[:50])
-        
-        # Create intelligent title slide
-        title_slide_layout = prs.slide_layouts[0]  # Title Slide
-        title_slide = prs.slides.add_slide(title_slide_layout)
-        
-        # Smart title extraction
-        main_title = "Professional Presentation"
-        subtitle = f"Converted from PDF • {document_analysis['total_pages']} Pages"
-        
-        if document_analysis['main_topics']:
-            main_title = document_analysis['main_topics'][0]
-            if len(document_analysis['main_topics']) > 1:
-                subtitle = document_analysis['main_topics'][1][:100]
-        
-        title_slide.shapes.title.text = main_title
-        if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
-            title_slide.placeholders[1].text = subtitle
-        
-        # Enhanced title formatting
-        title_shape = title_slide.shapes.title
-        title_frame = title_shape.text_frame
-        title_para = title_frame.paragraphs[0]
-        title_para.font.size = Pt(36)
-        title_para.font.bold = True
-        title_para.font.color.rgb = RGBColor(31, 73, 125)  # Professional blue
-        title_para.alignment = PP_ALIGN.CENTER
-        
-        # Create agenda/overview slide if multiple topics
-        if len(document_analysis['main_topics']) > 2:
-            agenda_layout = prs.slide_layouts[1]  # Title and Content
-            agenda_slide = prs.slides.add_slide(agenda_layout)
-            agenda_slide.shapes.title.text = "Overview"
-            
-            content_box = agenda_slide.placeholders[1]
-            text_frame = content_box.text_frame
-            text_frame.clear()
-            
-            for i, topic in enumerate(document_analysis['main_topics'][:8]):  # Max 8 topics
-                para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                para.text = f"• {topic}"
-                para.font.size = Pt(18)
-                para.space_after = Pt(12)
-                para.font.color.rgb = RGBColor(68, 84, 106)
-        
-        # Process each page with intelligent content detection and professional formatting
-        for page_num in range(len(pdf_doc)):
-            page = pdf_doc.load_page(page_num)
-            
-            print(f"🔍 Analyzing page {page_num + 1} with AI-enhanced content detection...")
-            
-            # Advanced content analysis with better structure detection
-            text_dict = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)
-            blocks = text_dict.get("blocks", [])
-            
-            # Extract images with enhanced processing
+            # Extract images
             image_list = page.get_images()
+            has_images = len(image_list) > 0
+            has_text = len(text_lines) > 0 and len(page_text.strip()) > 50
             
-            # Advanced content categorization
-            content_structure = {
-                'headings': [],
-                'body_text': [],
-                'bullet_points': [],
-                'quotes': [],
-                'code_blocks': [],
-                'tables': [],
-                'images': [],
-                'charts': []
-            }
+            # Choose appropriate slide layout
+            if has_text and has_images:
+                slide_layout = prs.slide_layouts[4] if len(prs.slide_layouts) > 4 else prs.slide_layouts[1]
+            elif has_text:
+                slide_layout = prs.slide_layouts[1]  # Title and Content
+            else:
+                slide_layout = prs.slide_layouts[6]  # Blank
             
-            # Intelligent text analysis
-            for block in blocks:
-                if 'lines' in block:
-                    block_content = {
-                        'text': "",
-                        'font_sizes': [],
-                        'colors': [],
-                        'positions': [],
-                        'formatting': {'bold': False, 'italic': False}
-                    }
+            slide = prs.slides.add_slide(slide_layout)
+            
+            # Set slide title
+            if has_text and text_lines:
+                title_text = text_lines[0]
+                if len(title_text) > 80:
+                    title_text = title_text[:80] + "..."
+                
+                if slide.shapes.title:
+                    slide.shapes.title.text = title_text or f"Page {page_num + 1}"
+            else:
+                if slide.shapes.title:
+                    slide.shapes.title.text = f"Page {page_num + 1}"
+            
+            # Add text content
+            if has_text and text_lines and len(slide.placeholders) > 1:
+                content_placeholder = slide.placeholders[1]
+                content_frame = content_placeholder.text_frame
+                content_frame.clear()
+                
+                # Process text lines intelligently
+                content_lines = text_lines[1:] if len(text_lines) > 1 else text_lines
+                
+                for i, line in enumerate(content_lines[:10]):  # Limit to 10 lines
+                    if i > 0:
+                        content_frame.add_paragraph()
                     
-                    for line in block["lines"]:
-                        line_text = ""
-                        for span in line["spans"]:
-                            text = span['text'].strip()
-                            if text:
-                                line_text += text + " "
-                                block_content['font_sizes'].append(span.get('size', 12))
-                                
-                                # Extract formatting
-                                flags = span.get('flags', 0)
-                                if flags & 2**4:  # Bold
-                                    block_content['formatting']['bold'] = True
-                                if flags & 2**1:  # Italic
-                                    block_content['formatting']['italic'] = True
-                        
-                        if line_text.strip():
-                            block_content['text'] += line_text.strip() + "\\n"
+                    para = content_frame.paragraphs[i] if i < len(content_frame.paragraphs) else content_frame.add_paragraph()
+                    para.text = line
+                    para.font.size = Pt(14)
                     
-                    if block_content['text'].strip():
-                        avg_font_size = sum(block_content['font_sizes']) / len(block_content['font_sizes']) if block_content['font_sizes'] else 12
-                        text_content = block_content['text'].strip()
-                        
-                        # Categorize content intelligently
-                        if avg_font_size >= 18 or block_content['formatting']['bold']:
-                            content_structure['headings'].append({
-                                'text': text_content,
-                                'font_size': avg_font_size,
-                                'formatting': block_content['formatting']
-                            })
-                        elif text_content.startswith(('•', '-', '*', '○', '▪', '▫')) or '\\n•' in text_content:
-                            # Split bullet points
-                            bullets = [line.strip() for line in text_content.split('\\n') if line.strip()]
-                            content_structure['bullet_points'].extend(bullets)
-                        elif text_content.startswith(('"', '"', '"')) or 'said' in text_content.lower():
-                            content_structure['quotes'].append(text_content)
-                        elif any(keyword in text_content.lower() for keyword in ['def ', 'function', 'class ', 'import ', 'return']):
-                            content_structure['code_blocks'].append(text_content)
-                        else:
-                            content_structure['body_text'].append({
-                                'text': text_content,
-                                'font_size': avg_font_size
-                            })
+                    # Add bullets for short lines that look like list items
+                    if len(line) < 80 and not line.endswith('.') and ':' not in line:
+                        para.level = 0
             
-            # Process images with professional handling
-            if image_list:
-                print(f"📸 Processing {len(image_list)} images with professional enhancement...")
-                for img_index, img in enumerate(image_list):
+            # Add images
+            if has_images:
+                print(f"📸 Adding {min(len(image_list), 2)} images...")
+                
+                for img_index, img in enumerate(image_list[:2]):  # Max 2 images per slide
                     try:
                         xref = img[0]
                         pix = fitz.Pixmap(pdf_doc, xref)
                         
                         if pix.n - pix.alpha < 4:  # Valid image
                             img_data = pix.tobytes("png")
+                            image_stream = io.BytesIO(img_data)
                             
-                            # Analyze image for better categorization
-                            img_width, img_height = pix.width, pix.height
-                            aspect_ratio = img_width / img_height
-                            
-                            img_info = {
-                                'data': img_data,
-                                'width': img_width,
-                                'height': img_height,
-                                'aspect_ratio': aspect_ratio,
-                                'type': 'chart' if aspect_ratio > 1.5 else 'image'
-                            }
-                            
-                            if img_info['type'] == 'chart':
-                                content_structure['charts'].append(img_info)
+                            # Position images
+                            if has_text:
+                                left = Inches(7 + img_index * 0.5)
+                                top = Inches(1.5 + img_index * 0.3)
+                                max_width = Inches(5)
+                                max_height = Inches(4)
                             else:
-                                content_structure['images'].append(img_info)
+                                left = Inches(2 + img_index)
+                                top = Inches(1.5)
+                                max_width = Inches(9)
+                                max_height = Inches(5)
+                            
+                            # Maintain aspect ratio
+                            aspect_ratio = pix.width / pix.height
+                            if aspect_ratio > (max_width / max_height):
+                                width = max_width
+                                height = max_width / aspect_ratio
+                            else:
+                                height = max_height
+                                width = max_height * aspect_ratio
+                            
+                            slide.shapes.add_picture(image_stream, left, top, width, height)
                         
                         pix = None
-                    except Exception as img_error:
-                        print(f"⚠️ Image processing error: {img_error}")
-            
-            # Create intelligent slide layout based on content analysis
-            slide = None
-            
-            if content_structure['charts'] and content_structure['headings']:
-                # Chart/data slide
-                slide_layout = prs.slide_layouts[8] if len(prs.slide_layouts) > 8 else prs.slide_layouts[5]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📊 Creating chart/data slide for page {page_num + 1}")
-                
-            elif len(content_structure['bullet_points']) > 3:
-                # Bullet point slide
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📝 Creating bullet point slide for page {page_num + 1}")
-                
-            elif content_structure['images'] and content_structure['body_text']:
-                # Mixed content slide
-                slide_layout = prs.slide_layouts[4] if len(prs.slide_layouts) > 4 else prs.slide_layouts[6]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"🖼️ Creating mixed content slide for page {page_num + 1}")
-                
-            elif content_structure['quotes']:
-                # Quote slide
-                slide_layout = prs.slide_layouts[2] if len(prs.slide_layouts) > 2 else prs.slide_layouts[1]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"💬 Creating quote slide for page {page_num + 1}")
-                
-            else:
-                # Default content slide
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📄 Creating standard content slide for page {page_num + 1}")
-            
-            # Set slide title intelligently
-            slide_title = f"Page {page_num + 1}"
-            if content_structure['headings']:
-                slide_title = content_structure['headings'][0]['text'][:60]
-            elif content_structure['body_text']:
-                first_sentence = content_structure['body_text'][0]['text'].split('.')[0]
-                if len(first_sentence) < 80:
-                    slide_title = first_sentence
-            
-            if slide.shapes.title:
-                slide.shapes.title.text = slide_title
-                
-                # Professional title formatting
-                title_frame = slide.shapes.title.text_frame
-                title_para = title_frame.paragraphs[0]
-                title_para.font.size = Pt(28)
-                title_para.font.bold = True
-                title_para.font.color.rgb = RGBColor(31, 73, 125)
-            
-            # Add content based on structure
-            content_added = False
-            
-            # Handle bullet points professionally
-            if content_structure['bullet_points'] and len(slide.placeholders) > 1:
-                content_box = slide.placeholders[1]
-                text_frame = content_box.text_frame
-                text_frame.clear()
-                
-                for i, bullet in enumerate(content_structure['bullet_points'][:8]):  # Limit bullets
-                    clean_bullet = bullet.lstrip('•-*○▪▫ ').strip()
-                    if clean_bullet:
-                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                        para.text = clean_bullet
-                        para.font.size = Pt(16)
-                        para.space_after = Pt(8)
-                        para.level = 0
-                        para.font.color.rgb = RGBColor(68, 84, 106)
-                
-                content_added = True
-            
-            # Handle body text professionally
-            elif content_structure['body_text'] and not content_added:
-                if len(slide.placeholders) > 1:
-                    content_box = slide.placeholders[1]
-                    text_frame = content_box.text_frame
-                    text_frame.clear()
-                    
-                    # Combine and format body text
-                    combined_text = ""
-                    for text_item in content_structure['body_text'][:3]:  # Limit text blocks
-                        combined_text += text_item['text'] + "\\n\\n"
-                    
-                    # Smart paragraph splitting
-                    paragraphs = [p.strip() for p in combined_text.split('\\n\\n') if p.strip()]
-                    
-                    for i, para_text in enumerate(paragraphs[:4]):  # Max 4 paragraphs
-                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                        para.text = para_text
-                        para.font.size = Pt(14)
-                        para.space_after = Pt(10)
-                        para.font.color.rgb = RGBColor(68, 84, 106)
-                    
-                    content_added = True
-            
-            # Handle quotes specially
-            if content_structure['quotes'] and not content_added:
-                quote_text = content_structure['quotes'][0]
-                
-                # Create custom quote box
-                left = Inches(1)
-                top = Inches(2)
-                width = Inches(11)
-                height = Inches(4)
-                
-                quote_box = slide.shapes.add_textbox(left, top, width, height)
-                text_frame = quote_box.text_frame
-                text_frame.text = f'"{quote_text}"'
-                
-                para = text_frame.paragraphs[0]
-                para.font.size = Pt(20)
-                para.font.italic = True
-                para.alignment = PP_ALIGN.CENTER
-                para.font.color.rgb = RGBColor(31, 73, 125)
-                
-                content_added = True
-            
-            # Add images/charts professionally
-            if content_structure['images'] or content_structure['charts']:
-                all_visual_content = content_structure['images'] + content_structure['charts']
-                
-                for i, visual in enumerate(all_visual_content[:2]):  # Max 2 visuals per slide
-                    try:
-                        image_stream = io.BytesIO(visual['data'])
-                        
-                        # Smart positioning based on content
-                        if content_added:
-                            # Side by side with content
-                            left = Inches(7.5)
-                            top = Inches(1.5)
-                            max_width = Inches(5)
-                            max_height = Inches(5)
-                        else:
-                            # Center stage
-                            left = Inches(2)
-                            top = Inches(1.5)
-                            max_width = Inches(9)
-                            max_height = Inches(5.5)
-                        
-                        # Maintain aspect ratio
-                        aspect_ratio = visual['aspect_ratio']
-                        if aspect_ratio > (max_width / max_height):
-                            width = max_width
-                            height = max_width / aspect_ratio
-                        else:
-                            height = max_height
-                            width = max_height * aspect_ratio
-                        
-                        # Add professional border/shadow effect through positioning
-                        slide.shapes.add_picture(
-                            image_stream,
-                            left + (Inches(0.3) * i),
-                            top + (Inches(0.3) * i),
-                            width,
-                            height
-                        )
                         
                     except Exception as img_error:
-                        print(f"⚠️ Image placement error: {img_error}")
+                        print(f"⚠️ Image error: {img_error}")
+                        continue
             
-            # If no meaningful content, create high-quality page image with professional framing
-            if not content_added and not content_structure['images'] and not content_structure['charts']:
-                print(f"📄 Creating professional page image for page {page_num + 1}")
+            # If no content extracted, use page image
+            if not has_text and not has_images:
+                print(f"📄 Using page image for slide {page_num + 1}")
                 
-                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
-                
-                # Ultra-high quality rendering
-                mat = fitz.Matrix(4.0, 4.0)  # 4x scaling for exceptional quality
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                img_data = pix.tobytes("png")
-                image_stream = io.BytesIO(img_data)
-                
-                # Professional image placement with margins
-                margin = Inches(0.5)
-                available_width = prs.slide_width - (2 * margin)
-                available_height = prs.slide_height - (2 * margin)
-                
-                page_rect = page.rect
-                aspect_ratio = page_rect.width / page_rect.height
-                slide_aspect = float(available_width) / float(available_height)
-                
-                if aspect_ratio > slide_aspect:
-                    img_width = available_width
-                    img_height = available_width / aspect_ratio
-                    left = margin
-                    top = margin + (available_height - img_height) / 2
-                else:
-                    img_height = available_height
-                    img_width = available_height * aspect_ratio
-                    left = margin + (available_width - img_width) / 2
-                    top = margin
-                
-                slide.shapes.add_picture(
-                    image_stream,
-                    int(left), int(top),
-                    int(img_width), int(img_height)
-                )
+                try:
+                    # High-quality page rendering
+                    mat = fitz.Matrix(3.0, 3.0)  # 3x scaling
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    img_data = pix.tobytes("png")
+                    image_stream = io.BytesIO(img_data)
+                    
+                    # Center the page image
+                    margin = Inches(0.5)
+                    available_width = prs.slide_width - (2 * margin)
+                    available_height = prs.slide_height - (2 * margin)
+                    
+                    page_rect = page.rect
+                    aspect_ratio = page_rect.width / page_rect.height
+                    slide_aspect = available_width / available_height
+                    
+                    if aspect_ratio > slide_aspect:
+                        img_width = available_width
+                        img_height = available_width / aspect_ratio
+                        left = margin
+                        top = margin + (available_height - img_height) / 2
+                    else:
+                        img_height = available_height
+                        img_width = available_height * aspect_ratio
+                        left = margin + (available_width - img_width) / 2
+                        top = margin
+                    
+                    slide.shapes.add_picture(image_stream, left, top, img_width, img_height)
+                    
+                except Exception as page_img_error:
+                    print(f"⚠️ Page image error: {page_img_error}")
             
-            print(f"✅ Professional slide {page_num + 1}/{len(pdf_doc)} completed")
+            print(f"✅ Slide {page_num + 1} completed")
         
-        # Add professional footer and slide numbers
+        # Add slide numbers
         for slide_idx, slide in enumerate(prs.slides):
             if slide_idx > 0:  # Skip title slide
                 try:
-                    # Professional footer
-                    left = prs.slide_width - Inches(1.5)
-                    top = prs.slide_height - Inches(0.4)
-                    width = Inches(1.2)
+                    left = prs.slide_width - Inches(1)
+                    top = prs.slide_height - Inches(0.5)
+                    width = Inches(0.8)
                     height = Inches(0.3)
                     
-                    footer_box = slide.shapes.add_textbox(left, top, width, height)
-                    footer_frame = footer_box.text_frame
-                    footer_frame.text = f"{slide_idx} / {len(prs.slides) - 1}"
-                    footer_para = footer_frame.paragraphs[0]
-                    footer_para.font.size = Pt(10)
-                    footer_para.font.color.rgb = RGBColor(150, 150, 150)
-                    footer_para.alignment = PP_ALIGN.RIGHT
+                    number_box = slide.shapes.add_textbox(left, top, width, height)
+                    number_frame = number_box.text_frame
+                    number_frame.text = str(slide_idx)
+                    
+                    para = number_frame.paragraphs[0]
+                    para.font.size = Pt(10)
+                    para.font.color.rgb = RGBColor(128, 128, 128)
+                    para.alignment = PP_ALIGN.CENTER
                 except:
-                    pass  # Skip footer if placement fails
-        
-        # Add final summary slide if document is long
-        if len(pdf_doc) > 5:
-            summary_layout = prs.slide_layouts[1]
-            summary_slide = prs.slides.add_slide(summary_layout)
-            summary_slide.shapes.title.text = "Summary"
-            
-            content_box = summary_slide.placeholders[1]
-            text_frame = content_box.text_frame
-            text_frame.clear()
-            
-            summary_points = [
-                f"• Document contains {len(pdf_doc)} pages",
-                f"• Key topics: {', '.join(document_analysis['main_topics'][:3])}",
-                "• Professional conversion completed",
-                "• All content preserved and enhanced"
-            ]
-            
-            for i, point in enumerate(summary_points):
-                para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                para.text = point
-                para.font.size = Pt(18)
-                para.space_after = Pt(12)
-                para.font.color.rgb = RGBColor(68, 84, 106)
+                    pass  # Skip if numbering fails
         
         prs.save(output_path)
         pdf_doc.close()
         
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 15000:
-            print(f"✅ ULTIMATE PROFESSIONAL PPTX conversion successful: {os.path.getsize(output_path)} bytes")
-            print(f"🎯 Created {len(prs.slides)} professional slides with intelligent content organization")
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+            print(f"✅ Enhanced PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            print(f"🎯 Created {len(prs.slides)} slides")
             return True
+        else:
+            print(f"⚠️ Output file seems small: {os.path.getsize(output_path) if os.path.exists(output_path) else 0} bytes")
             
     except ImportError:
-        print("📦 Installing Enhanced PyMuPDF and python-pptx...")
+        print("📦 Installing PyMuPDF and python-pptx...")
         if install_package('PyMuPDF') and install_package('python-pptx'):
             return premium_convert_to_pptx(input_path, output_path)
+        else:
+            print("❌ Failed to install required packages")
     except Exception as e:
         print(f"❌ Enhanced PPTX conversion failed: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # Method 2: Fallback to structured text extraction with better layout
+    # Method 2: Ultra-simple fallback method
     try:
         import fitz
         from pptx import Presentation
-        from pptx.util import Inches, Pt
+        from pptx.util import Inches
         import io
         
-        print("📋 Using Structured Text Extraction Method...")
+        print("🔄 Trying simple fallback method...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
-        prs.slide_width = Inches(13.33)
-        prs.slide_height = Inches(7.5)
         
-        for page_num in range(len(pdf_doc)):
+        for page_num in range(min(len(pdf_doc), 20)):  # Limit to 20 pages
             page = pdf_doc.load_page(page_num)
             
-            # Get text in a more structured way
-            text_dict = page.get_text("dict")
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
             
-            # Create slide
-            slide_layout = prs.slide_layouts[1]  # Title and Content
-            slide = prs.slides.add_slide(slide_layout)
+            # Simple page image conversion
+            mat = fitz.Matrix(2.0, 2.0)
+            pix = page.get_pixmap(matrix=mat)
+            img_data = pix.tobytes("png")
+            image_stream = io.BytesIO(img_data)
+            
+            slide.shapes.add_picture(
+                image_stream,
+                Inches(0.5), Inches(0.5),
+                Inches(12), Inches(6.5)
+            )
+        
+        prs.save(output_path)
+        pdf_doc.close()
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
+            print(f"✅ Simple PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Simple fallback also failed: {e}")
+    
+    return False
             
             # Extract all text
             all_text = page.get_text()
@@ -2023,6 +1780,134 @@ def basic_convert_to_docx(input_path, output_path):
     except Exception as e:
         print(f"Basic DOCX conversion failed: {e}")
     return False
+
+def detect_ultimate_tables(text_blocks):
+    """ULTIMATE table detection using spatial and pattern analysis"""
+    if not text_blocks:
+        return []
+    
+    # Sort blocks by Y position (top to bottom), then X position (left to right)
+    sorted_blocks = sorted(text_blocks, key=lambda b: (b['y'], b['x']))
+    
+    tables = []
+    current_table = []
+    
+    # Group lines that are at similar Y positions (potential table rows)
+    y_tolerance = 10  # pixels
+    current_y_group = []
+    current_y = None
+    
+    for block in sorted_blocks:
+        if current_y is None or abs(block['y'] - current_y) <= y_tolerance:
+            current_y_group.append(block)
+            current_y = block['y']
+        else:
+            # Process the current Y group as a potential table row
+            if len(current_y_group) >= 2:  # At least 2 columns
+                # Sort by X position to get column order
+                row_blocks = sorted(current_y_group, key=lambda b: b['x'])
+                row_data = [block['text'] for block in row_blocks]
+                current_table.append(row_data)
+            elif current_table:
+                # End of potential table
+                if len(current_table) >= 2:
+                    tables.append(current_table)
+                current_table = []
+            
+            # Start new Y group
+            current_y_group = [block]
+            current_y = block['y']
+    
+    # Don't forget the last group
+    if len(current_y_group) >= 2:
+        row_blocks = sorted(current_y_group, key=lambda b: b['x'])
+        row_data = [block['text'] for block in row_blocks]
+        current_table.append(row_data)
+    
+    if len(current_table) >= 2:
+        tables.append(current_table)
+    
+    # If spatial analysis didn't work, fall back to pattern-based detection
+    if not tables:
+        all_text = '\\n'.join(block['text'] for block in text_blocks)
+        pattern_tables = detect_tabular_patterns(all_text)
+        tables.extend(pattern_tables)
+    
+    return tables
+
+def extract_ultimate_structured_data(text, page_num):
+    """Extract ULTIMATE structured data with intelligent categorization"""
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    if not lines:
+        return None
+    
+    structured_data = [['Category', 'Content', 'Context', 'Page']]  # ULTIMATE header
+    
+    current_section = f"Page {page_num + 1}"
+    
+    for line in lines:
+        clean_line = line.strip()
+        if len(clean_line) < 3:
+            continue
+        
+        category = 'Text'
+        context = current_section
+        
+        # ULTIMATE categorization
+        if re.match(r'^[A-Z][A-Z\\s]{3,}$', clean_line) or (clean_line.isupper() and len(clean_line) > 5):
+            category = 'Section Header'
+            current_section = clean_line
+        elif ':' in clean_line and clean_line.count(':') == 1 and len(clean_line) < 100:
+            category = 'Key-Value Pair'
+        elif re.match(r'^\\d+[\\.\\)]', clean_line):
+            category = 'Numbered Item'
+        elif re.match(r'^[•▪▫○●◦‣⁃-]', clean_line):
+            category = 'Bullet Point'
+        elif re.search(r'\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\\b', clean_line.lower()):
+            category = 'Date/Time'
+        elif re.search(r'\\$[\\d,]+\\.?\\d*|\\b\\d+[,.]\\d+\\b|\\b\\d+%\\b', clean_line):
+            category = 'Financial/Numeric'
+        elif re.search(r'\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b', clean_line):
+            category = 'Contact Info'
+        elif len(clean_line) > 80:
+            category = 'Paragraph'
+        elif clean_line.endswith(':'):
+            category = 'Label/Title'
+        
+        # Truncate very long content
+        display_content = clean_line[:200] + ('...' if len(clean_line) > 200 else '')
+        
+        structured_data.append([category, display_content, context, page_num + 1])
+    
+    return structured_data if len(structured_data) > 1 else None
+
+def detect_tabular_patterns(text):
+    """Detect tabular patterns in plain text"""
+    lines = [line.strip() for line in text.split('\\n') if line.strip()]
+    tables = []
+    
+    # Look for lines with multiple columns (separated by spaces or tabs)
+    potential_table = []
+    for line in lines:
+        # Check if line has multiple columns (at least 2 space-separated parts)
+        parts = line.split()
+        if len(parts) >= 2:
+            # Further check for tabular structure
+            if any(char in line for char in ['\\t', '  ', '|']):  # Tab, multiple spaces, or pipe
+                potential_table.append(parts)
+            elif len(parts) >= 3:  # At least 3 columns worth of data
+                potential_table.append(parts)
+        else:
+            # End of potential table
+            if len(potential_table) >= 2:
+                tables.append(potential_table)
+            potential_table = []
+    
+    # Don't forget the last table
+    if len(potential_table) >= 2:
+        tables.append(potential_table)
+    
+    return tables
 
 def basic_convert_to_xlsx(input_path, output_path):
     """ENHANCED PDF to XLSX using advanced text extraction and table detection"""
@@ -2216,117 +2101,6 @@ def basic_convert_to_xlsx(input_path, output_path):
             print("⚠️ No extractable content found")
             return False
 
-def detect_ultimate_tables(text_blocks):
-    """ULTIMATE table detection using spatial and pattern analysis"""
-    if not text_blocks:
-        return []
-    
-    # Sort blocks by Y position (top to bottom), then X position (left to right)
-    sorted_blocks = sorted(text_blocks, key=lambda b: (b['y'], b['x']))
-    
-    tables = []
-    current_table = []
-    
-    # Group lines that are at similar Y positions (potential table rows)
-    y_tolerance = 10  # pixels
-    current_y_group = []
-    current_y = None
-    
-    for block in sorted_blocks:
-        if current_y is None or abs(block['y'] - current_y) <= y_tolerance:
-            current_y_group.append(block)
-            current_y = block['y']
-        else:
-            # Process the current Y group as a potential table row
-            if len(current_y_group) >= 2:  # At least 2 columns
-                # Sort by X position to get column order
-                row_blocks = sorted(current_y_group, key=lambda b: b['x'])
-                row_data = [block['text'] for block in row_blocks]
-                current_table.append(row_data)
-            elif current_table:
-                # End of potential table
-                if len(current_table) >= 2:
-                    tables.append(current_table)
-                current_table = []
-            
-            # Start new Y group
-            current_y_group = [block]
-            current_y = block['y']
-    
-    # Don't forget the last group
-    if len(current_y_group) >= 2:
-        row_blocks = sorted(current_y_group, key=lambda b: b['x'])
-        row_data = [block['text'] for block in row_blocks]
-        current_table.append(row_data)
-    
-    if len(current_table) >= 2:
-        tables.append(current_table)
-    
-    # If spatial analysis didn't work, fall back to pattern-based detection
-    if not tables:
-        all_text = '\\n'.join(block['text'] for block in text_blocks)
-        pattern_tables = detect_tabular_patterns(all_text)
-        tables.extend(pattern_tables)
-    
-    return tables
-
-def extract_ultimate_structured_data(text, page_num):
-    """Extract ULTIMATE structured data with intelligent categorization"""
-    lines = [line.strip() for line in text.split('\\n') if line.strip()]
-    if not lines:
-        return None
-    
-    structured_data = [['Category', 'Content', 'Context', 'Page']]  # ULTIMATE header
-    
-    current_section = f"Page {page_num + 1}"
-    
-    for line in lines:
-        clean_line = line.strip()
-        if len(clean_line) < 3:
-            continue
-        
-        category = 'Text'
-        context = current_section
-        
-        # ULTIMATE categorization
-        if re.match(r'^[A-Z][A-Z\\s]{3,}$', clean_line) or (clean_line.isupper() and len(clean_line) > 5):
-            category = 'Section Header'
-            current_section = clean_line
-        elif ':' in clean_line and clean_line.count(':') == 1 and len(clean_line) < 100:
-            category = 'Key-Value Pair'
-        elif re.match(r'^\\d+[\\.\\)]', clean_line):
-            category = 'Numbered Item'
-        elif re.match(r'^[•▪▫○●◦‣⁃-]', clean_line):
-            category = 'Bullet Point'
-        elif re.search(r'\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\\b', clean_line.lower()):
-            category = 'Date/Time'
-        elif re.search(r'\\$[\\d,]+\\.?\\d*|\\b\\d+[,.]\\d+\\b|\\b\\d+%\\b', clean_line):
-            category = 'Financial/Numeric'
-        elif re.search(r'\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b', clean_line):
-            category = 'Contact Info'
-        elif len(clean_line) > 80:
-            category = 'Paragraph'
-        elif clean_line.endswith(':'):
-            category = 'Label/Title'
-        
-        # Truncate very long content
-        display_content = clean_line[:200] + ('...' if len(clean_line) > 200 else '')
-        
-        structured_data.append([category, display_content, context, page_num + 1])
-    
-    return structured_data if len(structured_data) > 1 else None
-            for row in ws['A1:B3']:
-                for cell in row:
-                    cell.border = border
-                    if cell.row == 1:
-                        cell.font = header_font
-                        cell.fill = header_fill
-            
-            wb.save(output_path)
-            pdf_doc.close()
-            print(f"✅ PDF Summary Excel created")
-            return True
-        
     except ImportError:
         if install_package('PyMuPDF') and install_package('pandas') and install_package('openpyxl'):
             return basic_convert_to_xlsx(input_path, output_path)
