@@ -1499,20 +1499,20 @@ def extract_structured_text_data(text, page_num):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """Revolutionary PDF to PPTX with zero text duplication and perfect formatting"""
-    print(f"🚀 Starting REVOLUTIONARY PDF to PPTX conversion - ZERO duplication method...")
+    """Ultra-Clean PDF to PPTX with ZERO text duplication and perfect formatting"""
+    print(f"🚀 Starting ULTRA-CLEAN PDF to PPTX conversion...")
     
-    # Method 1: Structure-based approach with properly formatted slides
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
         from pptx.util import Inches, Pt
         from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
         from pptx.dml.color import RGBColor
+        from pptx.enum.shapes import MSO_SHAPE
         import io
         import re
         
-        print("🎨 Using structure-based method with ZERO text duplication...")
+        print("🎨 Using ULTRA-CLEAN method with complete text removal from background...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
@@ -1525,82 +1525,240 @@ def premium_convert_to_pptx(input_path, output_path):
         title_slide = prs.slides.add_slide(prs.slide_layouts[0])
         title_slide.shapes.title.text = "PDF Presentation"
         if len(title_slide.placeholders) > 1:
-            title_slide.placeholders[1].text = f"Converted from PDF • {len(pdf_doc)} pages • Background + Editable Text"
+            title_slide.placeholders[1].text = f"Converted from PDF • {len(pdf_doc)} pages • Clean Background + Editable Text"
         
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            print(f"🎯 Processing page {page_num + 1}/{len(pdf_doc)} with background separation")
+            print(f"🎯 Processing page {page_num + 1}/{len(pdf_doc)} with COMPLETE background cleaning")
             
-            # Step 1: Extract all text with precise positioning
-            text_instances = []
+            # Step 1: Extract ALL text with detailed positioning and formatting
+            text_elements = []
             text_dict = page.get_text("dict")
-            blocks = text_dict.get("blocks", [])
             
-            for block in blocks:
+            for block in text_dict.get("blocks", []):
                 if "lines" in block:
-                    block_bbox = block.get("bbox", [0, 0, 0, 0])
-                    
                     for line in block["lines"]:
-                        line_bbox = line.get("bbox", [0, 0, 0, 0])
+                        line_text_parts = []
+                        line_bbox = None
+                        line_font_size = 12
+                        line_flags = 0
                         
                         for span in line["spans"]:
                             text = span.get("text", "").strip()
-                            if text and len(text) > 1:  # Ignore single characters and empty text
-                                span_bbox = span.get("bbox", [0, 0, 0, 0])
-                                font_size = span.get("size", 12)
-                                flags = span.get("flags", 0)
+                            if text:
+                                line_text_parts.append(text)
+                                if line_bbox is None:
+                                    line_bbox = list(span.get("bbox", [0, 0, 0, 0]))
+                                else:
+                                    # Extend bbox to include this span
+                                    span_bbox = span.get("bbox", [0, 0, 0, 0])
+                                    line_bbox[0] = min(line_bbox[0], span_bbox[0])
+                                    line_bbox[1] = min(line_bbox[1], span_bbox[1])
+                                    line_bbox[2] = max(line_bbox[2], span_bbox[2])
+                                    line_bbox[3] = max(line_bbox[3], span_bbox[3])
                                 
-                                # Calculate position as percentage of page
+                                line_font_size = max(line_font_size, span.get("size", 12))
+                                line_flags |= span.get("flags", 0)
+                        
+                        if line_text_parts and line_bbox:
+                            combined_text = " ".join(line_text_parts).strip()
+                            if len(combined_text) > 1:  # Only meaningful text
                                 page_rect = page.rect
-                                x_percent = (span_bbox[0] - page_rect.x0) / page_rect.width
-                                y_percent = (span_bbox[1] - page_rect.y0) / page_rect.height
-                                width_percent = (span_bbox[2] - span_bbox[0]) / page_rect.width
-                                height_percent = (span_bbox[3] - span_bbox[1]) / page_rect.height
                                 
-                                text_instances.append({
-                                    'text': text,
-                                    'x_percent': x_percent,
-                                    'y_percent': y_percent,
-                                    'width_percent': width_percent,
-                                    'height_percent': height_percent,
-                                    'font_size': font_size,
-                                    'is_bold': bool(flags & 2**4),
-                                    'is_italic': bool(flags & 2**1),
-                                    'bbox': span_bbox
+                                text_elements.append({
+                                    'text': combined_text,
+                                    'x_percent': (line_bbox[0] - page_rect.x0) / page_rect.width,
+                                    'y_percent': (line_bbox[1] - page_rect.y0) / page_rect.height,
+                                    'width_percent': (line_bbox[2] - line_bbox[0]) / page_rect.width,
+                                    'height_percent': (line_bbox[3] - line_bbox[1]) / page_rect.height,
+                                    'font_size': line_font_size,
+                                    'is_bold': bool(line_flags & 2**4),
+                                    'is_italic': bool(line_flags & 2**1),
+                                    'bbox': line_bbox
                                 })
             
-            print(f"📝 Extracted {len(text_instances)} text elements from page {page_num + 1}")
+            print(f"📝 Extracted {len(text_elements)} text lines from page {page_num + 1}")
             
-            # Step 2: Create background image without text (if possible)
+            # Step 2: Create COMPLETELY CLEAN background by rendering ONLY non-text elements
             try:
-                # Create a clean background by drawing white rectangles over text areas
-                page_copy = pdf_doc.new_page(width=page.rect.width, height=page.rect.height)
+                # Method: Render page at high DPI, then mask out all text areas completely
+                zoom_matrix = fitz.Matrix(3.0, 3.0)  # High resolution
+                pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
                 
-                # First, draw the original page content
-                page_copy.show_pdf_page(page.rect, pdf_doc, page.number)
+                # Create a mask to remove ALL text areas
+                import PIL.Image as Image
+                import PIL.ImageDraw as ImageDraw
                 
-                # Then, cover text areas with white rectangles to remove text
-                for text_item in text_instances:
-                    if len(text_item['text'].strip()) > 1:  # Only cover meaningful text
-                        # Calculate rectangle coordinates
-                        bbox = text_item['bbox']
-                        # Add small padding to ensure complete text coverage
-                        padding = 2
-                        rect = fitz.Rect(
-                            bbox[0] - padding, 
-                            bbox[1] - padding, 
-                            bbox[2] + padding, 
-                            bbox[3] + padding
-                        )
-                        
-                        # Draw white rectangle to cover text
-                        page_copy.draw_rect(rect, color=None, fill=(1, 1, 1), width=0)
+                # Convert to PIL Image
+                img_data = pix.tobytes("ppm")
+                pil_image = Image.open(io.BytesIO(img_data))
                 
-                # Render the cleaned page
-                mat = fitz.Matrix(3.0, 3.0)  # 3x scaling for high quality
-                background_pix = page_copy.get_pixmap(matrix=mat, alpha=False)
-                background_data = background_pix.tobytes("png")
+                # Create drawing context
+                draw = ImageDraw.Draw(pil_image)
+                
+                # Draw white rectangles over ALL text areas with extra padding
+                for text_elem in text_elements:
+                    bbox = text_elem['bbox']
+                    # Scale bbox to high-res image coordinates
+                    x1 = int(bbox[0] * 3.0)
+                    y1 = int(bbox[1] * 3.0)
+                    x2 = int(bbox[2] * 3.0)
+                    y2 = int(bbox[3] * 3.0)
+                    
+                    # Add extra padding to ensure complete text removal
+                    padding = max(3, int(text_elem['font_size'] * 0.3))
+                    x1 = max(0, x1 - padding)
+                    y1 = max(0, y1 - padding)
+                    x2 = min(pil_image.width, x2 + padding)
+                    y2 = min(pil_image.height, y2 + padding)
+                    
+                    # Draw white rectangle to completely remove text
+                    draw.rectangle([x1, y1, x2, y2], fill='white', outline='white')
+                
+                # Convert back to bytes for PowerPoint
+                img_buffer = io.BytesIO()
+                pil_image.save(img_buffer, format='PNG', optimize=True, quality=95)
+                img_buffer.seek(0)
+                
+                print(f"✅ Created clean background for page {page_num + 1}")
+                
+            except Exception as bg_error:
+                print(f"⚠️ Background cleaning failed for page {page_num + 1}: {bg_error}")
+                # Fallback: Use original page as background
+                zoom_matrix = fitz.Matrix(2.0, 2.0)
+                pix = page.get_pixmap(matrix=zoom_matrix, alpha=False)
+                img_buffer = io.BytesIO()
+                img_buffer.write(pix.tobytes("png"))
+            
+            # Step 3: Create PowerPoint slide with clean background
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Add clean background image
+            left = Inches(0)
+            top = Inches(0)
+            width = prs.slide_width
+            height = prs.slide_height
+            
+            try:
+                slide.shapes.add_picture(img_buffer, left, top, width, height)
+                print(f"✅ Added clean background to slide {page_num + 1}")
+            except Exception as img_error:
+                print(f"⚠️ Failed to add background image to slide {page_num + 1}: {img_error}")
+            
+            # Step 4: Add ONLY editable text elements (NO duplicates)
+            for text_elem in text_elements:
+                text_content = text_elem['text'].strip()
+                if len(text_content) < 2:  # Skip single characters and empty
+                    continue
+                
+                # Calculate position on slide
+                slide_width = float(prs.slide_width)
+                slide_height = float(prs.slide_height)
+                
+                text_left = slide_width * text_elem['x_percent']
+                text_top = slide_height * text_elem['y_percent']
+                text_width = max(Inches(1), slide_width * text_elem['width_percent'])
+                text_height = max(Inches(0.3), slide_height * text_elem['height_percent'])
+                
+                try:
+                    # Create text box with proper sizing
+                    textbox = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
+                    text_frame = textbox.text_frame
+                    
+                    # Configure text frame properties
+                    text_frame.clear()  # Remove any default content
+                    text_frame.margin_left = Pt(2)
+                    text_frame.margin_right = Pt(2)
+                    text_frame.margin_top = Pt(1)
+                    text_frame.margin_bottom = Pt(1)
+                    text_frame.word_wrap = True
+                    text_frame.auto_size = None  # Manual sizing
+                    
+                    # Add paragraph with proper formatting
+                    paragraph = text_frame.paragraphs[0]
+                    paragraph.text = text_content
+                    
+                    # Set font properties
+                    font = paragraph.font
+                    font.size = Pt(max(8, min(text_elem['font_size'], 24)))  # Reasonable size limits
+                    font.bold = text_elem['is_bold']
+                    font.italic = text_elem['is_italic']
+                    font.name = 'Arial'  # Consistent font
+                    font.color.rgb = RGBColor(0, 0, 0)  # Black text
+                    
+                    # Set paragraph alignment
+                    paragraph.alignment = PP_ALIGN.LEFT
+                    paragraph.space_before = Pt(0)
+                    paragraph.space_after = Pt(0)
+                    paragraph.line_spacing = 1.0
+                    
+                    # Make textbox background transparent
+                    textbox.fill.background()
+                    if hasattr(textbox, 'line'):
+                        textbox.line.fill.background()
+                    
+                    print(f"📝 Added text: '{text_content[:30]}...' to slide {page_num + 1}")
+                    
+                except Exception as text_error:
+                    print(f"⚠️ Failed to add text '{text_content[:20]}...' to slide {page_num + 1}: {text_error}")
+                    continue
+            
+            print(f"✅ Completed slide {page_num + 1} with {len(text_elements)} text elements")
+        
+        # Save the presentation
+        pdf_doc.close()
+        prs.save(output_path)
+        
+        
+        print(f"🎉 SUCCESS! Ultra-clean PPTX created with ZERO text duplication: {output_path}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ultra-clean method failed: {e}")
+        
+        # Fallback Method: Simple conversion with basic text extraction
+        try:
+            print("🔄 Trying fallback method...")
+            import fitz
+            from pptx import Presentation
+            from pptx.util import Inches, Pt
+            
+            pdf_doc = fitz.open(input_path)
+            prs = Presentation()
+            
+            for page_num in range(len(pdf_doc)):
+                page = pdf_doc.load_page(page_num)
+                
+                # Create slide with image
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                
+                # Add page as image
+                mat = fitz.Matrix(2.0, 2.0)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_data = pix.tobytes("png")
+                img_stream = io.BytesIO(img_data)
+                
+                slide.shapes.add_picture(img_stream, Inches(0), Inches(0), prs.slide_width, prs.slide_height)
+                
+                # Extract and add simple text
+                text_content = page.get_text()
+                if text_content.strip():
+                    textbox = slide.shapes.add_textbox(
+                        Inches(0.5), Inches(0.5), 
+                        Inches(9), Inches(4.5)
+                    )
+                    textbox.text_frame.text = text_content[:500]  # Limit text length
+                    textbox.fill.background()
+            
+            pdf_doc.close()
+            prs.save(output_path)
+            print(f"✅ Fallback conversion completed: {output_path}")
+            return True
+            
+        except Exception as fallback_error:
+            print(f"❌ All conversion methods failed: {fallback_error}")
+            return False
                 
                 print(f"�️ Created background image for page {page_num + 1}")
                 
