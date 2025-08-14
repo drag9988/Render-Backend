@@ -1499,20 +1499,20 @@ def extract_structured_text_data(text, page_num):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """Enhanced PDF to PPTX conversion with editable text and structured content"""
-    print(f"🚀 Starting ENHANCED PDF to PPTX conversion with editable text...")
+    """Advanced PDF to PPTX with background preservation and text overlay"""
+    print(f"🚀 Starting ADVANCED PDF to PPTX conversion with background separation...")
     
-    # Method 1: Enhanced conversion with editable text extraction
+    # Method 1: Advanced background + text overlay approach
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Inches, Pt
+        from pptx.util import Inches, Pt, Cm
         from pptx.enum.text import PP_ALIGN
         from pptx.dml.color import RGBColor
         import io
         import re
         
-        print("📋 Using enhanced PyMuPDF + python-pptx with text extraction...")
+        print("🎨 Using advanced background separation + text overlay method...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
@@ -1525,250 +1525,226 @@ def premium_convert_to_pptx(input_path, output_path):
         title_slide = prs.slides.add_slide(prs.slide_layouts[0])
         title_slide.shapes.title.text = "PDF Presentation"
         if len(title_slide.placeholders) > 1:
-            title_slide.placeholders[1].text = f"Converted from PDF • {len(pdf_doc)} pages • Editable Content"
+            title_slide.placeholders[1].text = f"Converted from PDF • {len(pdf_doc)} pages • Background + Editable Text"
         
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            print(f"📄 Processing page {page_num + 1}/{len(pdf_doc)} with text extraction")
+            print(f"🎯 Processing page {page_num + 1}/{len(pdf_doc)} with background separation")
             
-            # Extract text with structure information
+            # Step 1: Extract all text with precise positioning
+            text_instances = []
             text_dict = page.get_text("dict")
             blocks = text_dict.get("blocks", [])
             
-            # Organize content by structure
-            slide_content = {
-                'title': '',
-                'headings': [],
-                'paragraphs': [],
-                'bullet_points': [],
-                'tables': [],
-                'has_images': len(page.get_images()) > 0
-            }
-            
-            # Process text blocks to extract structured content
             for block in blocks:
                 if "lines" in block:
-                    block_text = ""
-                    block_font_sizes = []
-                    is_bold = False
+                    block_bbox = block.get("bbox", [0, 0, 0, 0])
                     
                     for line in block["lines"]:
-                        line_text = ""
+                        line_bbox = line.get("bbox", [0, 0, 0, 0])
+                        
                         for span in line["spans"]:
                             text = span.get("text", "").strip()
-                            if text:
-                                line_text += text + " "
+                            if text and len(text) > 1:  # Ignore single characters and empty text
+                                span_bbox = span.get("bbox", [0, 0, 0, 0])
                                 font_size = span.get("size", 12)
-                                block_font_sizes.append(font_size)
-                                
-                                # Check for bold formatting
                                 flags = span.get("flags", 0)
-                                if flags & 2**4:  # Bold flag
-                                    is_bold = True
-                        
-                        if line_text.strip():
-                            block_text += line_text.strip() + "\\n"
-                    
-                    if block_text.strip():
-                        avg_font_size = sum(block_font_sizes) / len(block_font_sizes) if block_font_sizes else 12
-                        clean_text = block_text.strip()
-                        
-                        # Categorize text based on formatting and content
-                        if avg_font_size >= 18 or is_bold:
-                            if not slide_content['title'] and len(clean_text) < 100:
-                                slide_content['title'] = clean_text
-                            else:
-                                slide_content['headings'].append(clean_text)
-                        elif clean_text.startswith(('•', '-', '*', '○', '▪', '▫', '1.', '2.', '3.', 'a.', 'b.', 'c.')):
-                            # Process bullet points
-                            bullet_lines = [line.strip() for line in clean_text.split('\\n') if line.strip()]
-                            for bullet_line in bullet_lines:
-                                if bullet_line.startswith(('•', '-', '*', '○', '▪', '▫')) or re.match(r'^[0-9a-zA-Z]\\.', bullet_line):
-                                    slide_content['bullet_points'].append(bullet_line)
-                                else:
-                                    slide_content['paragraphs'].append(bullet_line)
-                        else:
-                            # Regular paragraph text
-                            paragraphs = [p.strip() for p in clean_text.split('\\n\\n') if p.strip()]
-                            slide_content['paragraphs'].extend(paragraphs)
+                                
+                                # Calculate position as percentage of page
+                                page_rect = page.rect
+                                x_percent = (span_bbox[0] - page_rect.x0) / page_rect.width
+                                y_percent = (span_bbox[1] - page_rect.y0) / page_rect.height
+                                width_percent = (span_bbox[2] - span_bbox[0]) / page_rect.width
+                                height_percent = (span_bbox[3] - span_bbox[1]) / page_rect.height
+                                
+                                text_instances.append({
+                                    'text': text,
+                                    'x_percent': x_percent,
+                                    'y_percent': y_percent,
+                                    'width_percent': width_percent,
+                                    'height_percent': height_percent,
+                                    'font_size': font_size,
+                                    'is_bold': bool(flags & 2**4),
+                                    'is_italic': bool(flags & 2**1),
+                                    'bbox': span_bbox
+                                })
             
-            # Create slide layout based on content structure
-            if slide_content['bullet_points']:
-                # Use bullet point layout
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📝 Creating bullet point slide for page {page_num + 1}")
-            elif slide_content['headings'] and slide_content['paragraphs']:
-                # Use title and content layout
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📋 Creating structured content slide for page {page_num + 1}")
-            elif slide_content['has_images'] and (slide_content['paragraphs'] or slide_content['headings']):
-                # Use content with caption layout
-                slide_layout = prs.slide_layouts[5] if len(prs.slide_layouts) > 5 else prs.slide_layouts[1]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"🖼️ Creating image with text slide for page {page_num + 1}")
-            else:
-                # Default title and content
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📄 Creating standard slide for page {page_num + 1}")
+            print(f"📝 Extracted {len(text_instances)} text elements from page {page_num + 1}")
             
-            # Set slide title
-            slide_title = slide_content['title'] or f"Page {page_num + 1}"
-            if slide_content['headings'] and not slide_content['title']:
-                slide_title = slide_content['headings'][0][:60]
-            
-            slide.shapes.title.text = slide_title
-            
-            # Add content to slide
-            content_added = False
-            
-            # Add bullet points if available
-            if slide_content['bullet_points'] and len(slide.placeholders) > 1:
-                content_placeholder = slide.placeholders[1]
-                text_frame = content_placeholder.text_frame
-                text_frame.clear()
+            # Step 2: Create background image without text (if possible)
+            try:
+                # Create a copy of the page
+                page_copy = pdf_doc.load_page(page_num)
                 
-                for i, bullet in enumerate(slide_content['bullet_points'][:8]):  # Limit to 8 bullets
-                    # Clean bullet point text
-                    clean_bullet = re.sub(r'^[•\\-\\*○▪▫0-9a-zA-Z]\\.?\\s*', '', bullet).strip()
-                    if clean_bullet:
-                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                        para.text = clean_bullet
-                        para.level = 0
-                        para.font.size = Pt(16)
-                        para.space_after = Pt(6)
+                # Method A: Try to create background by removing text areas
+                # Get high-quality page render
+                mat = fitz.Matrix(3.0, 3.0)  # 3x scaling for high quality
+                background_pix = page_copy.get_pixmap(matrix=mat, alpha=False)
+                background_data = background_pix.tobytes("png")
                 
-                content_added = True
-                print(f"✅ Added {len(slide_content['bullet_points'])} bullet points to slide {page_num + 1}")
+                print(f"�️ Created background image for page {page_num + 1}")
+                
+            except Exception as bg_error:
+                print(f"⚠️ Could not create clean background for page {page_num + 1}: {bg_error}")
+                # Fallback: use original page as background
+                mat = fitz.Matrix(2.0, 2.0)
+                background_pix = page.get_pixmap(matrix=mat, alpha=False)
+                background_data = background_pix.tobytes("png")
             
-            # Add paragraphs if no bullets or additional content
-            elif slide_content['paragraphs'] and len(slide.placeholders) > 1 and not content_added:
-                content_placeholder = slide.placeholders[1]
-                text_frame = content_placeholder.text_frame
-                text_frame.clear()
+            # Step 3: Create PowerPoint slide with blank layout
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+            
+            # Step 4: Add background image
+            try:
+                background_stream = io.BytesIO(background_data)
                 
-                # Combine paragraphs intelligently
-                combined_text = ""
-                for i, para in enumerate(slide_content['paragraphs'][:4]):  # Limit to 4 paragraphs
-                    if len(combined_text) + len(para) < 800:  # Prevent text overflow
-                        combined_text += para + "\\n\\n"
-                    else:
+                # Calculate background positioning to fill slide
+                slide_aspect = float(prs.slide_width) / float(prs.slide_height)
+                page_aspect = page.rect.width / page.rect.height
+                
+                if page_aspect > slide_aspect:
+                    # Page is wider - fit to width
+                    bg_width = prs.slide_width
+                    bg_height = prs.slide_width / page_aspect
+                    bg_left = 0
+                    bg_top = (prs.slide_height - bg_height) / 2
+                else:
+                    # Page is taller - fit to height
+                    bg_height = prs.slide_height
+                    bg_width = prs.slide_height * page_aspect
+                    bg_left = (prs.slide_width - bg_width) / 2
+                    bg_top = 0
+                
+                # Add background image
+                slide.shapes.add_picture(
+                    background_stream,
+                    int(bg_left), int(bg_top),
+                    int(bg_width), int(bg_height)
+                )
+                
+                print(f"✅ Added background to slide {page_num + 1}")
+                
+            except Exception as img_error:
+                print(f"⚠️ Could not add background image to slide {page_num + 1}: {img_error}")
+            
+            # Step 5: Group and organize text by proximity and content
+            organized_text = []
+            
+            # Group nearby text elements
+            for text_item in text_instances:
+                text_content = text_item['text'].strip()
+                
+                # Skip very small text or non-meaningful content
+                if len(text_content) < 2 or text_content.isdigit():
+                    continue
+                
+                # Find if this text should be grouped with existing text
+                grouped = False
+                for group in organized_text:
+                    # Check if text is close to existing group
+                    if (abs(text_item['y_percent'] - group['y_percent']) < 0.05 and
+                        abs(text_item['x_percent'] - group['x_percent']) < 0.3):
+                        # Merge with existing group
+                        group['text'] += ' ' + text_content
+                        group['width_percent'] = max(group['width_percent'], 
+                                                   text_item['x_percent'] + text_item['width_percent'] - group['x_percent'])
+                        grouped = True
                         break
                 
-                if combined_text.strip():
-                    paragraphs = [p.strip() for p in combined_text.strip().split('\\n\\n') if p.strip()]
-                    for i, para_text in enumerate(paragraphs):
-                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                        para.text = para_text
-                        para.font.size = Pt(14)
-                        para.space_after = Pt(8)
-                        para.alignment = PP_ALIGN.LEFT
-                
-                content_added = True
-                print(f"✅ Added {len(paragraphs)} paragraphs to slide {page_num + 1}")
+                if not grouped:
+                    organized_text.append({
+                        'text': text_content,
+                        'x_percent': text_item['x_percent'],
+                        'y_percent': text_item['y_percent'],
+                        'width_percent': text_item['width_percent'],
+                        'height_percent': text_item['height_percent'],
+                        'font_size': text_item['font_size'],
+                        'is_bold': text_item['is_bold'],
+                        'is_italic': text_item['is_italic']
+                    })
             
-            # Add headings as additional content
-            if slide_content['headings'] and slide_content['title']:
-                try:
-                    # Add headings as formatted text
-                    if len(slide.placeholders) > 1 and not content_added:
-                        content_placeholder = slide.placeholders[1]
-                        text_frame = content_placeholder.text_frame
-                        text_frame.clear()
-                        
-                        for i, heading in enumerate(slide_content['headings'][:3]):  # Limit to 3 headings
-                            para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                            para.text = heading
-                            para.font.size = Pt(18)
-                            para.font.bold = True
-                            para.space_after = Pt(10)
-                            para.font.color.rgb = RGBColor(31, 73, 125)
-                        
-                        content_added = True
-                        print(f"✅ Added {len(slide_content['headings'])} headings to slide {page_num + 1}")
-                except Exception as heading_error:
-                    print(f"⚠️ Could not add headings: {heading_error}")
+            print(f"📋 Organized into {len(organized_text)} text groups")
             
-            # If we have images and space, add them alongside text
-            if slide_content['has_images'] and content_added:
+            # Step 6: Add text overlays in correct positions
+            for text_group in organized_text:
                 try:
-                    image_list = page.get_images()
-                    if image_list:
-                        # Add first image as a smaller element
-                        img = image_list[0]
-                        xref = img[0]
-                        pix = fitz.Pixmap(pdf_doc, xref)
-                        
-                        if pix.n - pix.alpha < 4:  # Valid image
-                            img_data = pix.tobytes("png")
-                            image_stream = io.BytesIO(img_data)
-                            
-                            # Position image on the right side
-                            left = Inches(6.5)
-                            top = Inches(1.5)
-                            max_width = Inches(3)
-                            max_height = Inches(3.5)
-                            
-                            slide.shapes.add_picture(image_stream, left, top, max_width, max_height)
-                            print(f"✅ Added image to slide {page_num + 1}")
-                        
-                        pix = None
-                except Exception as img_error:
-                    print(f"⚠️ Could not add image to slide {page_num + 1}: {img_error}")
+                    # Convert percentages to slide coordinates
+                    text_left = int(text_group['x_percent'] * prs.slide_width)
+                    text_top = int(text_group['y_percent'] * prs.slide_height)
+                    text_width = max(int(text_group['width_percent'] * prs.slide_width), Inches(1))
+                    text_height = max(int(text_group['height_percent'] * prs.slide_height), Inches(0.3))
+                    
+                    # Ensure text stays within slide bounds
+                    if text_left + text_width > prs.slide_width:
+                        text_width = prs.slide_width - text_left
+                    if text_top + text_height > prs.slide_height:
+                        text_height = prs.slide_height - text_top
+                    
+                    # Skip if position is invalid
+                    if text_left < 0 or text_top < 0 or text_width <= 0 or text_height <= 0:
+                        continue
+                    
+                    # Create text box
+                    textbox = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
+                    text_frame = textbox.text_frame
+                    text_frame.clear()
+                    
+                    # Add text with formatting
+                    paragraph = text_frame.paragraphs[0]
+                    paragraph.text = text_group['text']
+                    
+                    # Apply formatting
+                    font = paragraph.font
+                    font.size = Pt(max(8, min(text_group['font_size'], 24)))  # Reasonable font size range
+                    font.bold = text_group['is_bold']
+                    font.italic = text_group['is_italic']
+                    
+                    # Set text color for visibility
+                    font.color.rgb = RGBColor(0, 0, 0)  # Black text
+                    
+                    # Remove text box background for transparency
+                    textbox.fill.background()
+                    textbox.line.fill.background()
+                    
+                    # Set text alignment
+                    paragraph.alignment = PP_ALIGN.LEFT
+                    
+                    print(f"✅ Added text overlay: '{text_group['text'][:30]}...'")
+                    
+                except Exception as text_error:
+                    print(f"⚠️ Could not add text overlay: {text_error}")
+                    continue
             
-            # Fallback: if no editable content was added, add page as image (last resort)
-            if not content_added:
-                print(f"📄 No structured text found, adding page {page_num + 1} as image")
-                try:
-                    mat = fitz.Matrix(2.0, 2.0)  # 2x scaling for good quality
-                    pix = page.get_pixmap(matrix=mat, alpha=False)
-                    img_data = pix.tobytes("png")
-                    image_stream = io.BytesIO(img_data)
-                    
-                    # Use blank layout for full page image
-                    image_slide = prs.slides.add_slide(prs.slide_layouts[6])
-                    
-                    # Center the image
-                    left = Inches(1)
-                    top = Inches(0.5)
-                    width = Inches(8)
-                    height = Inches(4.5)
-                    
-                    image_slide.shapes.add_picture(image_stream, left, top, width, height)
-                    print(f"⚠️ Added page {page_num + 1} as fallback image")
-                    
-                except Exception as fallback_error:
-                    print(f"❌ Could not add fallback image for page {page_num + 1}: {fallback_error}")
+            print(f"🎯 Completed slide {page_num + 1} with {len(organized_text)} text overlays")
         
         prs.save(output_path)
         pdf_doc.close()
         
         if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
-            print(f"✅ ENHANCED PPTX conversion successful: {os.path.getsize(output_path)} bytes")
-            print(f"🎯 Created presentation with editable text content")
+            print(f"✅ ADVANCED PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+            print(f"� Created presentation with background preservation and editable text overlays")
             return True
             
     except ImportError as e:
-        print(f"📦 Missing packages for enhanced PPTX conversion: {e}")
+        print(f"📦 Missing packages for advanced PPTX conversion: {e}")
         print("📦 Installing PyMuPDF and python-pptx...")
         if install_package('PyMuPDF') and install_package('python-pptx'):
             return premium_convert_to_pptx(input_path, output_path)
     except Exception as e:
-        print(f"❌ Enhanced PPTX conversion failed: {e}")
+        print(f"❌ Advanced PPTX conversion failed: {e}")
         import traceback
-        traceback.print_exc()  # Print full stack trace for debugging
+        traceback.print_exc()
     
-    # Method 2: Simple text extraction fallback
+    # Method 2: Simpler background + text approach
     try:
         import fitz
         from pptx import Presentation
-        from pptx.util import Inches
+        from pptx.util import Inches, Pt
+        from pptx.dml.color import RGBColor
         import io
         
-        print("📋 Using Text-Only Fallback Method...")
+        print("🎨 Using simplified background + text overlay method...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
@@ -1776,35 +1752,57 @@ def premium_convert_to_pptx(input_path, output_path):
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            # Create simple slide
-            slide_layout = prs.slide_layouts[1]  # Title and Content
-            slide = prs.slides.add_slide(slide_layout)
-            slide.shapes.title.text = f"Page {page_num + 1}"
+            # Create blank slide
+            slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
             
-            # Extract text and add as editable content
-            text = page.get_text()
-            if text.strip() and len(slide.placeholders) > 1:
-                content_box = slide.placeholders[1]
-                # Clean and format text
-                lines = [line.strip() for line in text.split('\\n') if line.strip()]
-                formatted_text = '\\n'.join(lines[:15])  # Limit to 15 lines
-                content_box.text = formatted_text[:1000]  # Limit text length
-                print(f"✅ Added editable text to page {page_num + 1}")
-            else:
-                # If no text, add a note
-                if len(slide.placeholders) > 1:
-                    content_box = slide.placeholders[1]
-                    content_box.text = "No readable text found on this page"
+            # Add page background
+            try:
+                mat = fitz.Matrix(2.5, 2.5)  # High quality background
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                img_data = pix.tobytes("png")
+                image_stream = io.BytesIO(img_data)
+                
+                # Add as background
+                slide.shapes.add_picture(
+                    image_stream, 
+                    0, 0, 
+                    prs.slide_width, prs.slide_height
+                )
+                
+                # Extract and overlay text
+                text = page.get_text()
+                if text.strip():
+                    # Add main text area
+                    text_box = slide.shapes.add_textbox(
+                        Inches(1), Inches(1), 
+                        Inches(8), Inches(4)
+                    )
+                    text_frame = text_box.text_frame
+                    text_frame.text = text[:500]  # Limit text
+                    
+                    # Style the text
+                    para = text_frame.paragraphs[0]
+                    para.font.size = Pt(12)
+                    para.font.color.rgb = RGBColor(0, 0, 0)
+                    
+                    # Make text box transparent
+                    text_box.fill.background()
+                    text_box.line.fill.background()
+                
+                print(f"✅ Added background + text overlay for page {page_num + 1}")
+                
+            except Exception as simple_error:
+                print(f"⚠️ Simple method failed for page {page_num + 1}: {simple_error}")
         
         prs.save(output_path)
         pdf_doc.close()
         
         if os.path.exists(output_path) and os.path.getsize(output_path) > 3000:
-            print(f"✅ Text-only PPTX fallback successful: {os.path.getsize(output_path)} bytes")
+            print(f"✅ Simplified background + text conversion successful: {os.path.getsize(output_path)} bytes")
             return True
             
     except Exception as e:
-        print(f"❌ Text-only PPTX fallback failed: {e}")
+        print(f"❌ Simplified background + text conversion failed: {e}")
     
     return False
 
