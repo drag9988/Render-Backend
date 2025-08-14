@@ -1574,28 +1574,75 @@ def premium_convert_to_pptx(input_path, output_path):
             
             # Step 2: Create background image without text (if possible)
             try:
-                # Create a clean background by drawing white rectangles over text areas
+                # Create a BETTER clean background by reconstructing without text
                 page_copy = pdf_doc.new_page(width=page.rect.width, height=page.rect.height)
                 
-                # First, draw the original page content
-                page_copy.show_pdf_page(page.rect, pdf_doc, page.number)
+                # Start with white background
+                page_copy.draw_rect(page.rect, color=None, fill=(1, 1, 1), width=0)
                 
-                # Then, cover text areas with white rectangles to remove text
-                for text_item in text_instances:
-                    if len(text_item['text'].strip()) > 1:  # Only cover meaningful text
-                        # Calculate rectangle coordinates
-                        bbox = text_item['bbox']
-                        # Add small padding to ensure complete text coverage
-                        padding = 2
-                        rect = fitz.Rect(
-                            bbox[0] - padding, 
-                            bbox[1] - padding, 
-                            bbox[2] + padding, 
-                            bbox[3] + padding
-                        )
-                        
-                        # Draw white rectangle to cover text
+                # Try to extract and preserve only non-text elements
+                try:
+                    # Extract images and place them
+                    image_list = page.get_images(full=True)
+                    for img_index, img in enumerate(image_list):
+                        try:
+                            xref = img[0]
+                            pix = fitz.Pixmap(pdf_doc, xref)
+                            if pix.n - pix.alpha < 4:  # GRAY or RGB
+                                # Find image position and insert
+                                img_rect = page.get_image_bbox(img)
+                                if img_rect:
+                                    page_copy.insert_image(img_rect, pixmap=pix)
+                            pix = None
+                        except:
+                            continue
+                    
+                    # Extract vector graphics without text
+                    drawings = page.get_drawings()
+                    for drawing in drawings:
+                        try:
+                            for item in drawing.get("items", []):
+                                if item.get("type") == "l":  # Line
+                                    page_copy.draw_line(item["p1"], item["p2"], color=item.get("color", (0,0,0)))
+                                elif item.get("type") == "re":  # Rectangle  
+                                    page_copy.draw_rect(item["rect"], color=item.get("color"), fill=item.get("fill"))
+                        except:
+                            continue
+                    
+                    print(f"🎯 Reconstructed clean background with images and shapes")
+                    
+                except Exception as reconstruct_error:
+                    print(f"⚠️ Vector reconstruction failed: {reconstruct_error}")
+                    # Improved fallback: show original page then cover text with larger white areas
+                    page_copy.show_pdf_page(page.rect, pdf_doc, page.number)
+                    
+                    # Create larger merged rectangles to cover text completely
+                    text_areas = []
+                    for text_item in text_instances:
+                        if len(text_item['text'].strip()) > 1:
+                            bbox = text_item['bbox']
+                            padding = 10  # Much larger padding
+                            rect = fitz.Rect(bbox[0] - padding, bbox[1] - padding, 
+                                           bbox[2] + padding, bbox[3] + padding)
+                            text_areas.append(rect)
+                    
+                    # Merge overlapping areas
+                    merged_areas = []
+                    for rect in text_areas:
+                        merged = False
+                        for i, existing in enumerate(merged_areas):
+                            if existing.intersects(rect):
+                                merged_areas[i] = existing | rect
+                                merged = True
+                                break
+                        if not merged:
+                            merged_areas.append(rect)
+                    
+                    # Cover with white rectangles
+                    for rect in merged_areas:
                         page_copy.draw_rect(rect, color=None, fill=(1, 1, 1), width=0)
+                    
+                    print(f"🧹 Covered {len(merged_areas)} merged text areas")
                 
                 # Render the cleaned page
                 mat = fitz.Matrix(3.0, 3.0)  # 3x scaling for high quality
@@ -1778,8 +1825,8 @@ def premium_convert_to_pptx(input_path, output_path):
             
     except ImportError as e:
         print(f"📦 Missing packages for advanced PPTX conversion: {e}")
-        print("📦 Installing PyMuPDF and python-pptx...")
-        if install_package('PyMuPDF') and install_package('python-pptx'):
+        print("📦 Installing PyMuPDF, python-pptx, Pillow, and numpy...")
+        if install_package('PyMuPDF') and install_package('python-pptx') and install_package('Pillow') and install_package('numpy'):
             return premium_convert_to_pptx(input_path, output_path)
     except Exception as e:
         print(f"❌ Advanced PPTX conversion failed: {e}")
@@ -1812,34 +1859,97 @@ def premium_convert_to_pptx(input_path, output_path):
                 img_data = pix.tobytes("png")
                 image_stream = io.BytesIO(img_data)
                 
-                # Add as background
-                slide.shapes.add_picture(
-                    image_stream, 
-                    0, 0, 
-                    prs.slide_width, prs.slide_height
-                )
-                
-                # Extract and overlay text
-                text = page.get_text()
-                if text.strip():
-                    # Add main text area
-                    text_box = slide.shapes.add_textbox(
-                        Inches(1), Inches(1), 
-                        Inches(8), Inches(4)
+                # Add as background (with text removal preprocessing)
+                try:
+                    # Option 1: Try to create a light background to minimize text visibility
+                    import numpy as np
+                    from PIL import Image
+                    
+                    # Convert to PIL and lighten significantly
+                    img = Image.open(image_stream)
+                    img_array = np.array(img)
+                    
+                    # Make background very light to minimize original text visibility
+                    lightened = np.clip(img_array * 0.2 + 200, 0, 255).astype(np.uint8)
+                    lightened_img = Image.fromarray(lightened)
+                    
+                    # Save lightened version
+                    output_stream = io.BytesIO()
+                    lightened_img.save(output_stream, format='PNG')
+                    output_stream.seek(0)
+                    
+                    slide.shapes.add_picture(
+                        output_stream, 
+                        0, 0, 
+                        prs.slide_width, prs.slide_height
                     )
-                    text_frame = text_box.text_frame
-                    text_frame.text = text[:500]  # Limit text
                     
-                    # Style the text
-                    para = text_frame.paragraphs[0]
-                    para.font.size = Pt(12)
-                    para.font.color.rgb = RGBColor(0, 0, 0)
+                    print(f"🔅 Added lightened background for page {page_num + 1}")
                     
-                    # Make text box transparent
-                    text_box.fill.background()
-                    text_box.line.fill.background()
+                except ImportError:
+                    # Fallback: use original background but warn about text duplication
+                    slide.shapes.add_picture(
+                        image_stream, 
+                        0, 0, 
+                        prs.slide_width, prs.slide_height
+                    )
+                    print(f"⚠️ Using original background - may have text duplication for page {page_num + 1}")
+                except Exception as lighten_error:
+                    # Use original if lightening fails
+                    image_stream.seek(0)  # Reset stream position
+                    slide.shapes.add_picture(
+                        image_stream, 
+                        0, 0, 
+                        prs.slide_width, prs.slide_height
+                    )
+                    print(f"⚠️ Background lightening failed, using original for page {page_num + 1}")
                 
-                print(f"✅ Added background + text overlay for page {page_num + 1}")
+                # Extract and overlay text with better positioning
+                text_dict = page.get_text("dict")
+                blocks = text_dict.get("blocks", [])
+                
+                for block in blocks:
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                text_content = span.get("text", "").strip()
+                                if text_content and len(text_content) > 2:  # Only meaningful text
+                                    # Get text position
+                                    bbox = span.get("bbox", [0, 0, 0, 0])
+                                    page_rect = page.rect
+                                    
+                                    # Calculate position as percentage and convert to slide coordinates
+                                    x_ratio = (bbox[0] - page_rect.x0) / page_rect.width
+                                    y_ratio = (bbox[1] - page_rect.y0) / page_rect.height
+                                    width_ratio = (bbox[2] - bbox[0]) / page_rect.width
+                                    height_ratio = (bbox[3] - bbox[1]) / page_rect.height
+                                    
+                                    # Convert to slide coordinates
+                                    left = int(x_ratio * prs.slide_width)
+                                    top = int(y_ratio * prs.slide_height)
+                                    width = max(int(width_ratio * prs.slide_width), Inches(0.5))
+                                    height = max(int(height_ratio * prs.slide_height), Inches(0.2))
+                                    
+                                    # Ensure within bounds
+                                    if left >= 0 and top >= 0 and left + width <= prs.slide_width and top + height <= prs.slide_height:
+                                        try:
+                                            text_box = slide.shapes.add_textbox(left, top, width, height)
+                                            text_frame = text_box.text_frame
+                                            text_frame.text = text_content
+                                            
+                                            # Style the text
+                                            para = text_frame.paragraphs[0]
+                                            para.font.size = Pt(max(8, min(span.get("size", 12), 18)))
+                                            para.font.color.rgb = RGBColor(0, 0, 0)
+                                            
+                                            # Make text box transparent
+                                            text_box.fill.background()
+                                            text_box.line.fill.background()
+                                            
+                                        except Exception as text_box_error:
+                                            continue  # Skip problematic text boxes
+                
+                print(f"✅ Added processed background + positioned text for page {page_num + 1}")
                 
             except Exception as simple_error:
                 print(f"⚠️ Simple method failed for page {page_num + 1}: {simple_error}")
