@@ -1694,63 +1694,40 @@ def premium_convert_to_pptx(input_path, output_path):
             except Exception as img_error:
                 print(f"⚠️ Could not add background image to slide {page_num + 1}: {img_error}")
             
-            # Step 5: Enhanced text grouping and organization for better layout
+            # Step 5: Group and organize text by proximity and content (improved filtering)
             organized_text = []
             
-            # Group nearby text elements with improved logic
+            # Group nearby text elements and filter duplicates
             for text_item in text_instances:
                 text_content = text_item['text'].strip()
                 
-                # Enhanced filtering with better criteria
-                if (len(text_content) < 2 or 
-                    (text_content.isdigit() and len(text_content) < 3) or 
-                    text_content in ['.', '..', '...', '-', '_', '|', '•'] or
-                    text_content.isspace()):
+                # Enhanced filtering: Skip very small text, numbers, or non-meaningful content
+                if (len(text_content) < 3 or 
+                    text_content.isdigit() or 
+                    text_content in ['.', '..', '...', '-', '_', '|'] or
+                    len(text_content.split()) < 1):
                     continue
                 
-                # Check for duplicate content with better matching
+                # Check if this text already exists in organized_text (avoid duplicates)
                 already_exists = False
                 for existing in organized_text:
-                    existing_text = existing['text'].lower().strip()
-                    current_text = text_content.lower().strip()
-                    
-                    # More precise duplicate detection
-                    if (existing_text == current_text or 
-                        (len(current_text) > 5 and current_text in existing_text) or
-                        (len(existing_text) > 5 and existing_text in current_text)):
+                    if text_content.lower() in existing['text'].lower() or existing['text'].lower() in text_content.lower():
                         already_exists = True
                         break
                 
                 if already_exists:
                     continue
                 
-                # Improved text grouping with better proximity detection
+                # Find if this text should be grouped with existing text
                 grouped = False
                 for group in organized_text:
-                    # Check if text should be merged (same line or very close)
-                    y_diff = abs(text_item['y_percent'] - group['y_percent'])
-                    x_diff = abs(text_item['x_percent'] - group['x_percent'])
-                    
-                    # More intelligent grouping based on text size and proximity
-                    y_threshold = max(0.015, text_item['height_percent'] * 0.8)  # Dynamic threshold
-                    x_threshold = 0.15 if len(text_content) < 10 else 0.25  # Closer grouping for short text
-                    
-                    if y_diff < y_threshold and x_diff < x_threshold:
-                        # Smart merging with proper spacing
-                        separator = ' ' if x_diff > 0.05 else ''
-                        group['text'] += separator + text_content
-                        
-                        # Update bounding box to encompass both texts
-                        group['x_percent'] = min(group['x_percent'], text_item['x_percent'])
-                        right_edge = max(group['x_percent'] + group['width_percent'], 
-                                       text_item['x_percent'] + text_item['width_percent'])
-                        group['width_percent'] = right_edge - group['x_percent']
-                        
-                        # Update font properties (use larger/bolder when merging)
-                        group['font_size'] = max(group['font_size'], text_item['font_size'])
-                        group['is_bold'] = group['is_bold'] or text_item['is_bold']
-                        group['is_italic'] = group['is_italic'] or text_item['is_italic']
-                        
+                    # Check if text is close to existing group (more restrictive grouping)
+                    if (abs(text_item['y_percent'] - group['y_percent']) < 0.03 and
+                        abs(text_item['x_percent'] - group['x_percent']) < 0.2):
+                        # Merge with existing group
+                        group['text'] += ' ' + text_content
+                        group['width_percent'] = max(group['width_percent'], 
+                                                   text_item['x_percent'] + text_item['width_percent'] - group['x_percent'])
                         grouped = True
                         break
                 
@@ -1766,115 +1743,75 @@ def premium_convert_to_pptx(input_path, output_path):
                         'is_italic': text_item['is_italic']
                     })
             
-            # Sort text groups by position for logical reading order (top to bottom, left to right)
-            organized_text.sort(key=lambda x: (x['y_percent'], x['x_percent']))
+            print(f"📋 Organized into {len(organized_text)} text groups")
             
-            print(f"📋 Organized into {len(organized_text)} optimized text groups (sorted by position)")
-            
-            # Step 6: Add professionally formatted text boxes with enhanced positioning
+            # Step 6: Add text overlays in correct positions (with improved filtering)
             for text_group in organized_text:
                 try:
-                    # Final content validation
+                    # Filter out very small or potentially duplicate text
                     text_content = text_group['text'].strip()
-                    if len(text_content) < 2:
+                    if len(text_content) < 3 or text_content.isdigit() or text_content in ['.', '..', '...']:
                         continue
                     
-                    # Enhanced coordinate calculation with better precision
-                    base_left = text_group['x_percent'] * prs.slide_width
-                    base_top = text_group['y_percent'] * prs.slide_height
-                    base_width = text_group['width_percent'] * prs.slide_width
-                    base_height = text_group['height_percent'] * prs.slide_height
+                    # Convert percentages to slide coordinates
+                    text_left = int(text_group['x_percent'] * prs.slide_width)
+                    text_top = int(text_group['y_percent'] * prs.slide_height)
+                    text_width = max(int(text_group['width_percent'] * prs.slide_width), Inches(1))
+                    text_height = max(int(text_group['height_percent'] * prs.slide_height), Inches(0.3))
                     
-                    # Smart sizing with minimum and maximum constraints
-                    min_width = Inches(0.8)
-                    min_height = Inches(0.25)
-                    max_width = prs.slide_width * 0.9
-                    max_height = prs.slide_height * 0.15
+                    # Ensure text stays within slide bounds
+                    if text_left + text_width > prs.slide_width:
+                        text_width = prs.slide_width - text_left
+                    if text_top + text_height > prs.slide_height:
+                        text_height = prs.slide_height - text_top
                     
-                    # Calculate optimal text box dimensions
-                    text_width = max(min_width, min(base_width * 1.2, max_width))  # 20% wider for comfort
-                    text_height = max(min_height, min(base_height * 1.4, max_height))  # 40% taller for readability
-                    
-                    # Center text within its area with small adjustments
-                    text_left = max(0, base_left - (text_width - base_width) / 2)
-                    text_top = max(0, base_top - (text_height - base_height) / 4)  # Slight upward adjustment
-                    
-                    # Ensure text box stays within slide bounds with margins
-                    slide_margin = Inches(0.1)
-                    if text_left + text_width > prs.slide_width - slide_margin:
-                        text_left = prs.slide_width - text_width - slide_margin
-                    if text_top + text_height > prs.slide_height - slide_margin:
-                        text_top = prs.slide_height - text_height - slide_margin
-                    
-                    # Ensure minimum positioning
-                    text_left = max(slide_margin, text_left)
-                    text_top = max(slide_margin, text_top)
-                    
-                    # Skip if dimensions are invalid
-                    if text_width <= 0 or text_height <= 0:
+                    # Skip if position is invalid
+                    if text_left < 0 or text_top < 0 or text_width <= 0 or text_height <= 0:
                         continue
                     
-                    # Create professionally formatted text box
-                    textbox = slide.shapes.add_textbox(int(text_left), int(text_top), 
-                                                     int(text_width), int(text_height))
+                    # Create clean, solid text boxes (not transparent overlays)
+                    textbox = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
                     text_frame = textbox.text_frame
                     text_frame.clear()
                     
-                    # Enhanced text frame configuration
-                    text_frame.margin_left = Pt(6)    # Increased margins for better appearance
-                    text_frame.margin_right = Pt(6)
-                    text_frame.margin_top = Pt(3)
-                    text_frame.margin_bottom = Pt(3)
+                    # Configure text frame properties for proper text boxes
+                    text_frame.margin_left = Pt(3)
+                    text_frame.margin_right = Pt(3) 
+                    text_frame.margin_top = Pt(1)
+                    text_frame.margin_bottom = Pt(1)
                     text_frame.word_wrap = True
-                    text_frame.auto_size = False  # Fixed size for consistent appearance
+                    text_frame.auto_size = True
                     
-                    # Add text with enhanced formatting
+                    # Add text with proper formatting
                     paragraph = text_frame.paragraphs[0]
                     paragraph.text = text_group['text']
                     
-                    # Smart font sizing based on content and box size
-                    base_font_size = text_group['font_size']
-                    
-                    # Adjust font size based on text length and importance
-                    if len(text_content) < 10:  # Short text (likely headings)
-                        font_multiplier = 1.0
-                    elif len(text_content) < 50:  # Medium text
-                        font_multiplier = 0.95
-                    else:  # Long text
-                        font_multiplier = 0.9
-                    
-                    # Apply font size with reasonable bounds
-                    calculated_size = base_font_size * font_multiplier
-                    font_size = max(9, min(calculated_size, 28))  # Better size range
-                    
-                    # Enhanced font formatting
+                    # Apply proper text formatting (not transparent)
                     font = paragraph.font
-                    font.size = Pt(font_size)
+                    font.size = Pt(max(10, min(text_group['font_size'] * 0.9, 24)))
                     font.bold = text_group['is_bold']
                     font.italic = text_group['is_italic']
-                    font.color.rgb = RGBColor(20, 20, 20)  # Slightly softer than pure black
-                    font.name = 'Calibri'  # Use a clean, readable font
+                    font.color.rgb = RGBColor(0, 0, 0)  # Solid black text
                     
-                    # Professional text box styling
+                    # Make text box have a solid white background for readability
                     fill = textbox.fill
                     fill.solid()
-                    fill.fore_color.rgb = RGBColor(255, 255, 255)  # Clean white background
+                    fill.fore_color.rgb = RGBColor(255, 255, 255)  # White background
                     
-                    # Subtle border for definition
+                    # Add subtle border for better definition
                     line = textbox.line
-                    line.color.rgb = RGBColor(210, 210, 210)  # Light gray border
+                    line.color.rgb = RGBColor(200, 200, 200)  # Light gray border
                     line.width = Pt(0.5)
                     
-                    # Enhanced paragraph formatting
+                    # Set proper text alignment
                     paragraph.alignment = PP_ALIGN.LEFT
                     paragraph.space_before = Pt(0)
-                    paragraph.space_after = Pt(2)
-                    paragraph.line_spacing = 1.1  # Slightly increased line spacing for readability
+                    paragraph.space_after = Pt(0)
                     
-                    print(f"✅ Added enhanced text box: '{text_group['text'][:40]}...' (Font: {font_size}pt)")
+                    print(f"✅ Added solid editable text box: '{text_group['text'][:30]}...'")
                     
                 except Exception as text_error:
-                    print(f"⚠️ Could not create enhanced text box: {text_error}")
+                    print(f"⚠️ Could not add text box: {text_error}")
                     continue
             
             print(f"🎯 Completed slide {page_num + 1} with {len(organized_text)} text overlays")
@@ -1994,13 +1931,11 @@ def premium_convert_to_pptx(input_path, output_path):
                     )
                     print(f"⚠️ Background processing failed, using original for page {page_num + 1}")
                 
-                # Enhanced text extraction and grouping for better layout
+                # Extract and add properly formatted, solid text boxes
                 text_dict = page.get_text("dict")
                 blocks = text_dict.get("blocks", [])
                 
                 text_elements = []
-                processed_lines = set()  # Track processed text to avoid duplicates
-                
                 for block in blocks:
                     if "lines" in block:
                         for line in block["lines"]:
@@ -2010,173 +1945,92 @@ def premium_convert_to_pptx(input_path, output_path):
                             line_is_bold = False
                             line_is_italic = False
                             
-                            # Collect all spans in this line
-                            line_spans = []
                             for span in line["spans"]:
                                 text_content = span.get("text", "").strip()
-                                if text_content and len(text_content) > 1:  # Filter meaningless text
-                                    line_spans.append(span)
+                                if text_content:
+                                    line_text += text_content + " "
+                                    if line_bbox is None:
+                                        line_bbox = span.get("bbox", [0, 0, 0, 0])
+                                    else:
+                                        # Extend bbox to include this span
+                                        span_bbox = span.get("bbox", [0, 0, 0, 0])
+                                        line_bbox = [
+                                            min(line_bbox[0], span_bbox[0]),
+                                            min(line_bbox[1], span_bbox[1]),
+                                            max(line_bbox[2], span_bbox[2]),
+                                            max(line_bbox[3], span_bbox[3])
+                                        ]
+                                    line_font_size = max(line_font_size, span.get("size", 12))
+                                    line_is_bold = line_is_bold or bool(span.get("flags", 0) & 2**4)
+                                    line_is_italic = line_is_italic or bool(span.get("flags", 0) & 2**1)
                             
-                            # Process spans to build complete line
-                            for i, span in enumerate(line_spans):
-                                text_content = span.get("text", "").strip()
-                                line_text += text_content
-                                
-                                # Add space between spans if they're not adjacent
-                                if i < len(line_spans) - 1:
-                                    current_bbox = span.get("bbox", [0, 0, 0, 0])
-                                    next_bbox = line_spans[i + 1].get("bbox", [0, 0, 0, 0])
-                                    gap = next_bbox[0] - current_bbox[2]  # Gap between end of current and start of next
-                                    
-                                    if gap > span.get("size", 12) * 0.2:  # Add space if gap is significant
-                                        line_text += " "
-                                
-                                # Update line properties
-                                if line_bbox is None:
-                                    line_bbox = list(span.get("bbox", [0, 0, 0, 0]))
-                                else:
-                                    # Extend bbox to include this span
-                                    span_bbox = span.get("bbox", [0, 0, 0, 0])
-                                    line_bbox = [
-                                        min(line_bbox[0], span_bbox[0]),
-                                        min(line_bbox[1], span_bbox[1]),
-                                        max(line_bbox[2], span_bbox[2]),
-                                        max(line_bbox[3], span_bbox[3])
-                                    ]
-                                
-                                # Use largest font size and accumulate formatting
-                                line_font_size = max(line_font_size, span.get("size", 12))
-                                line_is_bold = line_is_bold or bool(span.get("flags", 0) & 2**4)
-                                line_is_italic = line_is_italic or bool(span.get("flags", 0) & 2**1)
-                            
-                            # Clean and validate line text
-                            line_text = line_text.strip()
-                            
-                            # Enhanced filtering
-                            if (line_text and len(line_text) >= 2 and line_bbox and
-                                line_text not in processed_lines and
-                                not line_text.isspace() and
-                                line_text not in ['.', '..', '...', '-', '_', '•', '|']):
-                                
-                                # Check if this is a meaningful text element
-                                if not (line_text.isdigit() and len(line_text) < 3):
-                                    text_elements.append({
-                                        'text': line_text,
-                                        'bbox': line_bbox,
-                                        'font_size': line_font_size,
-                                        'is_bold': line_is_bold,
-                                        'is_italic': line_is_italic
-                                    })
-                                    processed_lines.add(line_text)
+                            if line_text.strip() and line_bbox:
+                                text_elements.append({
+                                    'text': line_text.strip(),
+                                    'bbox': line_bbox,
+                                    'font_size': line_font_size,
+                                    'is_bold': line_is_bold,
+                                    'is_italic': line_is_italic
+                                })
                 
-                # Sort text elements by position (top to bottom, left to right)
-                text_elements.sort(key=lambda x: (x['bbox'][1], x['bbox'][0]))
-                
-                # Add enhanced, professionally formatted text boxes
+                # Add solid, editable text boxes at correct positions
                 for text_elem in text_elements:
                     try:
                         bbox = text_elem['bbox']
                         page_rect = page.rect
                         
-                        # Enhanced position calculation with better precision
+                        # Calculate position as percentage and convert to slide coordinates
                         x_ratio = (bbox[0] - page_rect.x0) / page_rect.width
                         y_ratio = (bbox[1] - page_rect.y0) / page_rect.height
                         width_ratio = (bbox[2] - bbox[0]) / page_rect.width
                         height_ratio = (bbox[3] - bbox[1]) / page_rect.height
                         
-                        # Smart sizing with enhanced dimensions
-                        base_left = x_ratio * prs.slide_width
-                        base_top = y_ratio * prs.slide_height
-                        base_width = width_ratio * prs.slide_width
-                        base_height = height_ratio * prs.slide_height
+                        # Convert to slide coordinates
+                        left = int(x_ratio * prs.slide_width)
+                        top = int(y_ratio * prs.slide_height)
+                        width = max(int(width_ratio * prs.slide_width), Inches(1))
+                        height = max(int(height_ratio * prs.slide_height), Inches(0.3))
                         
-                        # Enhanced sizing logic
-                        min_width = Inches(0.5)
-                        min_height = Inches(0.2)
-                        
-                        # Calculate optimal dimensions based on text length
-                        text_length = len(text_elem['text'])
-                        if text_length < 15:  # Short text
-                            width_multiplier = 1.3
-                            height_multiplier = 1.5
-                        elif text_length < 50:  # Medium text
-                            width_multiplier = 1.2
-                            height_multiplier = 1.4
-                        else:  # Long text
-                            width_multiplier = 1.1
-                            height_multiplier = 1.3
-                        
-                        # Apply sizing
-                        width = max(min_width, base_width * width_multiplier)
-                        height = max(min_height, base_height * height_multiplier)
-                        
-                        # Center text box around original position
-                        left = max(0, base_left - (width - base_width) / 2)
-                        top = max(0, base_top - (height - base_height) / 3)  # Slight upward shift
-                        
-                        # Ensure within slide bounds with margins
-                        margin = Inches(0.05)
-                        max_left = prs.slide_width - width - margin
-                        max_top = prs.slide_height - height - margin
-                        
-                        left = max(margin, min(left, max_left))
-                        top = max(margin, min(top, max_top))
-                        
-                        # Create enhanced text box
-                        text_box = slide.shapes.add_textbox(int(left), int(top), int(width), int(height))
-                        text_frame = text_box.text_frame
-                        text_frame.text = text_elem['text']
-                        
-                        # Enhanced text frame configuration
-                        text_frame.margin_left = Pt(5)    # Generous margins
-                        text_frame.margin_right = Pt(5)
-                        text_frame.margin_top = Pt(3)
-                        text_frame.margin_bottom = Pt(3)
-                        text_frame.word_wrap = True
-                        text_frame.auto_size = False
-                        
-                        # Enhanced text styling
-                        para = text_frame.paragraphs[0]
-                        font = para.font
-                        
-                        # Smart font sizing
-                        base_size = text_elem['font_size']
-                        if text_length < 10:  # Likely heading
-                            font_size = min(base_size * 1.0, 26)
-                        elif text_length < 30:  # Short paragraph
-                            font_size = min(base_size * 0.95, 22)
-                        else:  # Long text
-                            font_size = min(base_size * 0.9, 18)
-                        
-                        font.size = Pt(max(9, font_size))
-                        font.bold = text_elem['is_bold']
-                        font.italic = text_elem['is_italic']
-                        font.color.rgb = RGBColor(25, 25, 25)  # Slightly softer black
-                        font.name = 'Calibri'  # Professional font
-                        
-                        # Enhanced paragraph formatting
-                        para.alignment = PP_ALIGN.LEFT
-                        para.space_before = Pt(0)
-                        para.space_after = Pt(1)
-                        para.line_spacing = 1.15  # Better line spacing
-                        
-                        # Professional text box styling
-                        fill = text_box.fill
-                        fill.solid()
-                        fill.fore_color.rgb = RGBColor(255, 255, 255)  # Clean white
-                        
-                        # Subtle, refined border
-                        line = text_box.line
-                        line.color.rgb = RGBColor(225, 225, 225)  # Very light gray
-                        line.width = Pt(0.4)
-                        
-                        print(f"✅ Enhanced text box: '{text_elem['text'][:35]}...' ({font.size.pt}pt)")
-                        
+                        # Ensure within bounds
+                        if (left >= 0 and top >= 0 and 
+                            left + width <= prs.slide_width and 
+                            top + height <= prs.slide_height):
+                            
+                            # Create solid text box
+                            text_box = slide.shapes.add_textbox(left, top, width, height)
+                            text_frame = text_box.text_frame
+                            text_frame.text = text_elem['text']
+                            
+                            # Configure text frame
+                            text_frame.margin_left = Pt(3)
+                            text_frame.margin_right = Pt(3)
+                            text_frame.margin_top = Pt(2)
+                            text_frame.margin_bottom = Pt(2)
+                            text_frame.word_wrap = True
+                            
+                            # Style the text properly
+                            para = text_frame.paragraphs[0]
+                            font = para.font
+                            font.size = Pt(max(10, min(text_elem['font_size'], 20)))
+                            font.bold = text_elem['is_bold']
+                            font.italic = text_elem['is_italic']
+                            font.color.rgb = RGBColor(0, 0, 0)  # Solid black text
+                            
+                            # Make text box solid white background for readability
+                            fill = text_box.fill
+                            fill.solid()
+                            fill.fore_color.rgb = RGBColor(255, 255, 255)  # White background
+                            
+                            # Add light border
+                            line = text_box.line
+                            line.color.rgb = RGBColor(220, 220, 220)  # Very light gray border
+                            line.width = Pt(0.25)
+                            
                     except Exception as text_box_error:
-                        print(f"⚠️ Could not create enhanced text box: {text_box_error}")
+                        print(f"⚠️ Could not create text box: {text_box_error}")
                         continue
                 
-                print(f"✅ Added {len(text_elements)} professionally formatted text boxes for page {page_num + 1}")
+                print(f"✅ Added {len(text_elements)} solid text boxes for page {page_num + 1}")
                 
             except Exception as simple_error:
                 print(f"⚠️ Simple method failed for page {page_num + 1}: {simple_error}")
