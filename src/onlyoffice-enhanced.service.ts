@@ -1769,48 +1769,49 @@ def premium_convert_to_pptx(input_path, output_path):
                     if text_left < 0 or text_top < 0 or text_width <= 0 or text_height <= 0:
                         continue
                     
-                    # Create transparent text box
+                    # Create clean, solid text boxes (not transparent overlays)
                     textbox = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
                     text_frame = textbox.text_frame
                     text_frame.clear()
                     
-                    # Configure text frame properties
-                    text_frame.margin_left = 0
-                    text_frame.margin_right = 0
-                    text_frame.margin_top = 0
-                    text_frame.margin_bottom = 0
+                    # Configure text frame properties for proper text boxes
+                    text_frame.margin_left = Pt(3)
+                    text_frame.margin_right = Pt(3) 
+                    text_frame.margin_top = Pt(1)
+                    text_frame.margin_bottom = Pt(1)
                     text_frame.word_wrap = True
+                    text_frame.auto_size = True
                     
-                    # Add text with formatting
+                    # Add text with proper formatting
                     paragraph = text_frame.paragraphs[0]
                     paragraph.text = text_group['text']
                     
-                    # Apply enhanced formatting
+                    # Apply proper text formatting (not transparent)
                     font = paragraph.font
-                    font.size = Pt(max(8, min(text_group['font_size'] * 0.8, 20)))  # Slightly smaller font
+                    font.size = Pt(max(10, min(text_group['font_size'] * 0.9, 24)))
                     font.bold = text_group['is_bold']
                     font.italic = text_group['is_italic']
+                    font.color.rgb = RGBColor(0, 0, 0)  # Solid black text
                     
-                    # Set text color for good visibility
-                    font.color.rgb = RGBColor(0, 0, 0)  # Black text
-                    
-                    # Make text box completely transparent
+                    # Make text box have a solid white background for readability
                     fill = textbox.fill
-                    fill.background()
-                    line = textbox.line
-                    line.fill.background()
+                    fill.solid()
+                    fill.fore_color.rgb = RGBColor(255, 255, 255)  # White background
                     
-                    # Set text alignment
+                    # Add subtle border for better definition
+                    line = textbox.line
+                    line.color.rgb = RGBColor(200, 200, 200)  # Light gray border
+                    line.width = Pt(0.5)
+                    
+                    # Set proper text alignment
                     paragraph.alignment = PP_ALIGN.LEFT
                     paragraph.space_before = Pt(0)
                     paragraph.space_after = Pt(0)
                     
-                    print(f"✅ Added clean text overlay: '{text_group['text'][:30]}...'")
-                    
-                    # Note: Background should now be clean without original text
+                    print(f"✅ Added solid editable text box: '{text_group['text'][:30]}...'")
                     
                 except Exception as text_error:
-                    print(f"⚠️ Could not add text overlay: {text_error}")
+                    print(f"⚠️ Could not add text box: {text_error}")
                     continue
             
             print(f"🎯 Completed slide {page_num + 1} with {len(organized_text)} text overlays")
@@ -1820,7 +1821,7 @@ def premium_convert_to_pptx(input_path, output_path):
         
         if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
             print(f"✅ ADVANCED PPTX conversion successful: {os.path.getsize(output_path)} bytes")
-            print(f"� Created presentation with background preservation and editable text overlays")
+            print(f"📋 Created presentation with clean backgrounds and solid editable text boxes")
             return True
             
     except ImportError as e:
@@ -1859,23 +1860,49 @@ def premium_convert_to_pptx(input_path, output_path):
                 img_data = pix.tobytes("png")
                 image_stream = io.BytesIO(img_data)
                 
-                # Add as background (with text removal preprocessing)
+                # Create clean background without text
                 try:
-                    # Option 1: Try to create a light background to minimize text visibility
+                    # Method: Create background with only visual elements
                     import numpy as np
-                    from PIL import Image
+                    from PIL import Image, ImageDraw
                     
-                    # Convert to PIL and lighten significantly
+                    # Convert to PIL for processing
                     img = Image.open(image_stream)
                     img_array = np.array(img)
                     
-                    # Make background very light to minimize original text visibility
-                    lightened = np.clip(img_array * 0.2 + 200, 0, 255).astype(np.uint8)
-                    lightened_img = Image.fromarray(lightened)
+                    # Create a mask for text areas by detecting text-like regions
+                    # This is a simple approach - in practice, we'll use the text coordinates
+                    processed_img = img.copy()
                     
-                    # Save lightened version
+                    # Get text coordinates from PDF for masking
+                    text_dict = page.get_text("dict")
+                    blocks = text_dict.get("blocks", [])
+                    
+                    # Create mask to remove text areas
+                    draw = ImageDraw.Draw(processed_img)
+                    for block in blocks:
+                        if "lines" in block:
+                            for line in block["lines"]:
+                                for span in line["spans"]:
+                                    if span.get("text", "").strip():
+                                        bbox = span.get("bbox", [0, 0, 0, 0])
+                                        # Scale bbox to image coordinates
+                                        scale_x = img.width / page.rect.width
+                                        scale_y = img.height / page.rect.height
+                                        
+                                        x1 = int(bbox[0] * scale_x)
+                                        y1 = int(bbox[1] * scale_y)
+                                        x2 = int(bbox[2] * scale_x)
+                                        y2 = int(bbox[3] * scale_y)
+                                        
+                                        # Draw white rectangle to remove text
+                                        padding = 5
+                                        draw.rectangle([x1-padding, y1-padding, x2+padding, y2+padding], 
+                                                     fill=(255, 255, 255))
+                    
+                    # Save processed background
                     output_stream = io.BytesIO()
-                    lightened_img.save(output_stream, format='PNG')
+                    processed_img.save(output_stream, format='PNG')
                     output_stream.seek(0)
                     
                     slide.shapes.add_picture(
@@ -1884,72 +1911,126 @@ def premium_convert_to_pptx(input_path, output_path):
                         prs.slide_width, prs.slide_height
                     )
                     
-                    print(f"🔅 Added lightened background for page {page_num + 1}")
+                    print(f"🎨 Added clean background (text removed) for page {page_num + 1}")
                     
                 except ImportError:
-                    # Fallback: use original background but warn about text duplication
+                    # Fallback: use original background 
                     slide.shapes.add_picture(
                         image_stream, 
                         0, 0, 
                         prs.slide_width, prs.slide_height
                     )
-                    print(f"⚠️ Using original background - may have text duplication for page {page_num + 1}")
-                except Exception as lighten_error:
-                    # Use original if lightening fails
+                    print(f"⚠️ Using original background for page {page_num + 1}")
+                except Exception as process_error:
+                    # Use original if processing fails
                     image_stream.seek(0)  # Reset stream position
                     slide.shapes.add_picture(
                         image_stream, 
                         0, 0, 
                         prs.slide_width, prs.slide_height
                     )
-                    print(f"⚠️ Background lightening failed, using original for page {page_num + 1}")
+                    print(f"⚠️ Background processing failed, using original for page {page_num + 1}")
                 
-                # Extract and overlay text with better positioning
+                # Extract and add properly formatted, solid text boxes
                 text_dict = page.get_text("dict")
                 blocks = text_dict.get("blocks", [])
                 
+                text_elements = []
                 for block in blocks:
                     if "lines" in block:
                         for line in block["lines"]:
+                            line_text = ""
+                            line_bbox = None
+                            line_font_size = 12
+                            line_is_bold = False
+                            line_is_italic = False
+                            
                             for span in line["spans"]:
                                 text_content = span.get("text", "").strip()
-                                if text_content and len(text_content) > 2:  # Only meaningful text
-                                    # Get text position
-                                    bbox = span.get("bbox", [0, 0, 0, 0])
-                                    page_rect = page.rect
-                                    
-                                    # Calculate position as percentage and convert to slide coordinates
-                                    x_ratio = (bbox[0] - page_rect.x0) / page_rect.width
-                                    y_ratio = (bbox[1] - page_rect.y0) / page_rect.height
-                                    width_ratio = (bbox[2] - bbox[0]) / page_rect.width
-                                    height_ratio = (bbox[3] - bbox[1]) / page_rect.height
-                                    
-                                    # Convert to slide coordinates
-                                    left = int(x_ratio * prs.slide_width)
-                                    top = int(y_ratio * prs.slide_height)
-                                    width = max(int(width_ratio * prs.slide_width), Inches(0.5))
-                                    height = max(int(height_ratio * prs.slide_height), Inches(0.2))
-                                    
-                                    # Ensure within bounds
-                                    if left >= 0 and top >= 0 and left + width <= prs.slide_width and top + height <= prs.slide_height:
-                                        try:
-                                            text_box = slide.shapes.add_textbox(left, top, width, height)
-                                            text_frame = text_box.text_frame
-                                            text_frame.text = text_content
-                                            
-                                            # Style the text
-                                            para = text_frame.paragraphs[0]
-                                            para.font.size = Pt(max(8, min(span.get("size", 12), 18)))
-                                            para.font.color.rgb = RGBColor(0, 0, 0)
-                                            
-                                            # Make text box transparent
-                                            text_box.fill.background()
-                                            text_box.line.fill.background()
-                                            
-                                        except Exception as text_box_error:
-                                            continue  # Skip problematic text boxes
+                                if text_content:
+                                    line_text += text_content + " "
+                                    if line_bbox is None:
+                                        line_bbox = span.get("bbox", [0, 0, 0, 0])
+                                    else:
+                                        # Extend bbox to include this span
+                                        span_bbox = span.get("bbox", [0, 0, 0, 0])
+                                        line_bbox = [
+                                            min(line_bbox[0], span_bbox[0]),
+                                            min(line_bbox[1], span_bbox[1]),
+                                            max(line_bbox[2], span_bbox[2]),
+                                            max(line_bbox[3], span_bbox[3])
+                                        ]
+                                    line_font_size = max(line_font_size, span.get("size", 12))
+                                    line_is_bold = line_is_bold or bool(span.get("flags", 0) & 2**4)
+                                    line_is_italic = line_is_italic or bool(span.get("flags", 0) & 2**1)
+                            
+                            if line_text.strip() and line_bbox:
+                                text_elements.append({
+                                    'text': line_text.strip(),
+                                    'bbox': line_bbox,
+                                    'font_size': line_font_size,
+                                    'is_bold': line_is_bold,
+                                    'is_italic': line_is_italic
+                                })
                 
-                print(f"✅ Added processed background + positioned text for page {page_num + 1}")
+                # Add solid, editable text boxes at correct positions
+                for text_elem in text_elements:
+                    try:
+                        bbox = text_elem['bbox']
+                        page_rect = page.rect
+                        
+                        # Calculate position as percentage and convert to slide coordinates
+                        x_ratio = (bbox[0] - page_rect.x0) / page_rect.width
+                        y_ratio = (bbox[1] - page_rect.y0) / page_rect.height
+                        width_ratio = (bbox[2] - bbox[0]) / page_rect.width
+                        height_ratio = (bbox[3] - bbox[1]) / page_rect.height
+                        
+                        # Convert to slide coordinates
+                        left = int(x_ratio * prs.slide_width)
+                        top = int(y_ratio * prs.slide_height)
+                        width = max(int(width_ratio * prs.slide_width), Inches(1))
+                        height = max(int(height_ratio * prs.slide_height), Inches(0.3))
+                        
+                        # Ensure within bounds
+                        if (left >= 0 and top >= 0 and 
+                            left + width <= prs.slide_width and 
+                            top + height <= prs.slide_height):
+                            
+                            # Create solid text box
+                            text_box = slide.shapes.add_textbox(left, top, width, height)
+                            text_frame = text_box.text_frame
+                            text_frame.text = text_elem['text']
+                            
+                            # Configure text frame
+                            text_frame.margin_left = Pt(3)
+                            text_frame.margin_right = Pt(3)
+                            text_frame.margin_top = Pt(2)
+                            text_frame.margin_bottom = Pt(2)
+                            text_frame.word_wrap = True
+                            
+                            # Style the text properly
+                            para = text_frame.paragraphs[0]
+                            font = para.font
+                            font.size = Pt(max(10, min(text_elem['font_size'], 20)))
+                            font.bold = text_elem['is_bold']
+                            font.italic = text_elem['is_italic']
+                            font.color.rgb = RGBColor(0, 0, 0)  # Solid black text
+                            
+                            # Make text box solid white background for readability
+                            fill = text_box.fill
+                            fill.solid()
+                            fill.fore_color.rgb = RGBColor(255, 255, 255)  # White background
+                            
+                            # Add light border
+                            line = text_box.line
+                            line.color.rgb = RGBColor(220, 220, 220)  # Very light gray border
+                            line.width = Pt(0.25)
+                            
+                    except Exception as text_box_error:
+                        print(f"⚠️ Could not create text box: {text_box_error}")
+                        continue
+                
+                print(f"✅ Added {len(text_elements)} solid text boxes for page {page_num + 1}")
                 
             except Exception as simple_error:
                 print(f"⚠️ Simple method failed for page {page_num + 1}: {simple_error}")
@@ -1958,7 +2039,7 @@ def premium_convert_to_pptx(input_path, output_path):
         pdf_doc.close()
         
         if os.path.exists(output_path) and os.path.getsize(output_path) > 3000:
-            print(f"✅ Simplified background + text conversion successful: {os.path.getsize(output_path)} bytes")
+            print(f"✅ Clean background + solid text boxes conversion successful: {os.path.getsize(output_path)} bytes")
             return True
             
     except Exception as e:
