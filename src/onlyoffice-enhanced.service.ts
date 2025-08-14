@@ -1574,11 +1574,30 @@ def premium_convert_to_pptx(input_path, output_path):
             
             # Step 2: Create background image without text (if possible)
             try:
-                # Create a copy of the page
-                page_copy = pdf_doc.load_page(page_num)
+                # Create a clean background by drawing white rectangles over text areas
+                page_copy = pdf_doc.new_page(width=page.rect.width, height=page.rect.height)
                 
-                # Method A: Try to create background by removing text areas
-                # Get high-quality page render
+                # First, draw the original page content
+                page_copy.show_pdf_page(page.rect, pdf_doc, page.number)
+                
+                # Then, cover text areas with white rectangles to remove text
+                for text_item in text_instances:
+                    if len(text_item['text'].strip()) > 1:  # Only cover meaningful text
+                        # Calculate rectangle coordinates
+                        bbox = text_item['bbox']
+                        # Add small padding to ensure complete text coverage
+                        padding = 2
+                        rect = fitz.Rect(
+                            bbox[0] - padding, 
+                            bbox[1] - padding, 
+                            bbox[2] + padding, 
+                            bbox[3] + padding
+                        )
+                        
+                        # Draw white rectangle to cover text
+                        page_copy.draw_rect(rect, color=None, fill=(1, 1, 1), width=0)
+                
+                # Render the cleaned page
                 mat = fitz.Matrix(3.0, 3.0)  # 3x scaling for high quality
                 background_pix = page_copy.get_pixmap(matrix=mat, alpha=False)
                 background_data = background_pix.tobytes("png")
@@ -1628,23 +1647,36 @@ def premium_convert_to_pptx(input_path, output_path):
             except Exception as img_error:
                 print(f"⚠️ Could not add background image to slide {page_num + 1}: {img_error}")
             
-            # Step 5: Group and organize text by proximity and content
+            # Step 5: Group and organize text by proximity and content (improved filtering)
             organized_text = []
             
-            # Group nearby text elements
+            # Group nearby text elements and filter duplicates
             for text_item in text_instances:
                 text_content = text_item['text'].strip()
                 
-                # Skip very small text or non-meaningful content
-                if len(text_content) < 2 or text_content.isdigit():
+                # Enhanced filtering: Skip very small text, numbers, or non-meaningful content
+                if (len(text_content) < 3 or 
+                    text_content.isdigit() or 
+                    text_content in ['.', '..', '...', '-', '_', '|'] or
+                    len(text_content.split()) < 1):
+                    continue
+                
+                # Check if this text already exists in organized_text (avoid duplicates)
+                already_exists = False
+                for existing in organized_text:
+                    if text_content.lower() in existing['text'].lower() or existing['text'].lower() in text_content.lower():
+                        already_exists = True
+                        break
+                
+                if already_exists:
                     continue
                 
                 # Find if this text should be grouped with existing text
                 grouped = False
                 for group in organized_text:
-                    # Check if text is close to existing group
-                    if (abs(text_item['y_percent'] - group['y_percent']) < 0.05 and
-                        abs(text_item['x_percent'] - group['x_percent']) < 0.3):
+                    # Check if text is close to existing group (more restrictive grouping)
+                    if (abs(text_item['y_percent'] - group['y_percent']) < 0.03 and
+                        abs(text_item['x_percent'] - group['x_percent']) < 0.2):
                         # Merge with existing group
                         group['text'] += ' ' + text_content
                         group['width_percent'] = max(group['width_percent'], 
@@ -1666,9 +1698,14 @@ def premium_convert_to_pptx(input_path, output_path):
             
             print(f"📋 Organized into {len(organized_text)} text groups")
             
-            # Step 6: Add text overlays in correct positions
+            # Step 6: Add text overlays in correct positions (with improved filtering)
             for text_group in organized_text:
                 try:
+                    # Filter out very small or potentially duplicate text
+                    text_content = text_group['text'].strip()
+                    if len(text_content) < 3 or text_content.isdigit() or text_content in ['.', '..', '...']:
+                        continue
+                    
                     # Convert percentages to slide coordinates
                     text_left = int(text_group['x_percent'] * prs.slide_width)
                     text_top = int(text_group['y_percent'] * prs.slide_height)
@@ -1685,32 +1722,45 @@ def premium_convert_to_pptx(input_path, output_path):
                     if text_left < 0 or text_top < 0 or text_width <= 0 or text_height <= 0:
                         continue
                     
-                    # Create text box
+                    # Create transparent text box
                     textbox = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
                     text_frame = textbox.text_frame
                     text_frame.clear()
+                    
+                    # Configure text frame properties
+                    text_frame.margin_left = 0
+                    text_frame.margin_right = 0
+                    text_frame.margin_top = 0
+                    text_frame.margin_bottom = 0
+                    text_frame.word_wrap = True
                     
                     # Add text with formatting
                     paragraph = text_frame.paragraphs[0]
                     paragraph.text = text_group['text']
                     
-                    # Apply formatting
+                    # Apply enhanced formatting
                     font = paragraph.font
-                    font.size = Pt(max(8, min(text_group['font_size'], 24)))  # Reasonable font size range
+                    font.size = Pt(max(8, min(text_group['font_size'] * 0.8, 20)))  # Slightly smaller font
                     font.bold = text_group['is_bold']
                     font.italic = text_group['is_italic']
                     
-                    # Set text color for visibility
+                    # Set text color for good visibility
                     font.color.rgb = RGBColor(0, 0, 0)  # Black text
                     
-                    # Remove text box background for transparency
-                    textbox.fill.background()
-                    textbox.line.fill.background()
+                    # Make text box completely transparent
+                    fill = textbox.fill
+                    fill.background()
+                    line = textbox.line
+                    line.fill.background()
                     
                     # Set text alignment
                     paragraph.alignment = PP_ALIGN.LEFT
+                    paragraph.space_before = Pt(0)
+                    paragraph.space_after = Pt(0)
                     
-                    print(f"✅ Added text overlay: '{text_group['text'][:30]}...'")
+                    print(f"✅ Added clean text overlay: '{text_group['text'][:30]}...'")
+                    
+                    # Note: Background should now be clean without original text
                     
                 except Exception as text_error:
                     print(f"⚠️ Could not add text overlay: {text_error}")
