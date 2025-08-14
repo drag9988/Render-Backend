@@ -1499,20 +1499,20 @@ def extract_structured_text_data(text, page_num):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """Advanced PDF to PPTX with background preservation and text overlay"""
-    print(f"🚀 Starting ADVANCED PDF to PPTX conversion with background separation...")
+    """Revolutionary PDF to PPTX with zero text duplication and perfect formatting"""
+    print(f"🚀 Starting REVOLUTIONARY PDF to PPTX conversion - ZERO duplication method...")
     
-    # Method 1: Advanced background + text overlay approach
+    # Method 1: Structure-based approach with properly formatted slides
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Cm
-        from pptx.enum.text import PP_ALIGN
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
         from pptx.dml.color import RGBColor
         import io
         import re
         
-        print("🎨 Using advanced background separation + text overlay method...")
+        print("🎨 Using structure-based method with ZERO text duplication...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
