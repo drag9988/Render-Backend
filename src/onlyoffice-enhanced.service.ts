@@ -117,9 +117,13 @@ export class OnlyOfficeEnhancedService {
         this.logger.log(`⚠️ ONLYOFFICE Document Server not configured - using enhanced fallbacks`);
       }
 
-      // PRIORITY 2: Premium Python Libraries (Excellent quality, especially for DOCX)
+      // PRIORITY 2: Premium Python Libraries (Excellent quality, especially for DOCX and XLSX)
       try {
-        this.logger.log(`🥈 Attempting Premium Python conversion (pdf2docx, PyMuPDF)...`);
+        if (targetFormat === 'pptx') {
+          this.logger.log(`🎨 Attempting Premium Python PPTX conversion (Simplified Method)...`);
+        } else {
+          this.logger.log(`🥈 Attempting Premium Python conversion (pdf2docx, PyMuPDF)...`);
+        }
         const result = await this.convertViaPremiumPython(tempInputPath, tempOutputPath, targetFormat);
         if (result && result.length > 1000) {
           this.logger.log(`✅ Premium Python conversion: SUCCESS! Output: ${result.length} bytes`);
@@ -127,6 +131,9 @@ export class OnlyOfficeEnhancedService {
         }
       } catch (pythonError) {
         this.logger.warn(`❌ Premium Python conversion failed: ${pythonError.message}`);
+        if (targetFormat === 'pptx') {
+          this.logger.error(`🔍 PPTX specific error details: ${pythonError.stack || pythonError.message}`);
+        }
       }
 
       // PRIORITY 3: Advanced LibreOffice with PDF import optimizations
@@ -513,18 +520,24 @@ export class OnlyOfficeEnhancedService {
       this.logger.log(`📜 Python script size: ${scriptStats.size} bytes`);
 
       const command = `${this.pythonPath} "${scriptPath}" "${inputPath}" "${outputPath}" "${targetFormat}"`;
-      this.logger.log(`� Executing command: ${command}`);
+      this.logger.log(`🚀 Executing command: ${command}`);
 
       const startTime = Date.now();
-      // Use optimized timeout for premium conversion (90 seconds)
-      const optimizedTimeout = 90000; // 90 seconds for premium method
       const { stdout, stderr } = await execAsync(command, { 
-        timeout: optimizedTimeout,
-        maxBuffer: 1024 * 1024 * 20 // 20MB buffer for large outputs
+        timeout: this.timeout,
+        maxBuffer: 1024 * 1024 * 30 // 30MB buffer for PPTX conversions
       });
       const endTime = Date.now();
       
       this.logger.log(`⏱️ Python execution time: ${endTime - startTime}ms`);
+
+      // Enhanced logging for PPTX debugging
+      if (targetFormat === 'pptx') {
+        this.logger.log(`🔍 PPTX Debug - Full Python stdout: ${stdout}`);
+        if (stderr) {
+          this.logger.log(`🔍 PPTX Debug - Full Python stderr: ${stderr}`);
+        }
+      }
 
       // Log all output for debugging
       if (stderr) {
@@ -796,12 +809,13 @@ export class OnlyOfficeEnhancedService {
   }
 
   /**
-   * Generate Premium Python script with the best conversion libraries - OPTIMIZED
+   * Generate Premium Python script with the best conversion libraries
    */
   private generatePremiumPythonScript(): string {
     return `#!/usr/bin/env python3
 """
-OPTIMIZED Premium PDF Converter - Fast & Reliable PDF to Office Conversion
+Premium PDF Converter - Best Quality PDF to Office Conversion
+Uses the most advanced Python libraries for superior results
 """
 import sys
 import os
@@ -811,217 +825,21 @@ import tempfile
 from pathlib import Path
 
 def install_package(package, extra=""):
-    """Install Python package with timeout protection"""
+    """Install Python package with enhanced error handling"""
     try:
         package_spec = f"{package}{extra}"
         print(f"📦 Installing {package_spec}...")
         subprocess.check_call([
             sys.executable, "-m", "pip", "install", package_spec, 
-            "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"
-        ], timeout=60)  # 60 second timeout for package installation
+            "--break-system-packages", "--upgrade", "--no-warn-script-location"
+        ])
         print(f"✅ {package_spec} installed successfully.")
         return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+    except subprocess.CalledProcessError as e:
         print(f"❌ Could not install {package_spec}: {e}")
         return False
 
-# Install essential packages only - no complex dependencies
-print("🔄 Installing essential packages...")
-try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pdf2docx", 
-                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
-    print("✅ pdf2docx installed")
-except:
-    print("⚠️ pdf2docx install failed")
-
-try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "PyMuPDF", 
-                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
-    print("✅ PyMuPDF installed")
-except:
-    print("⚠️ PyMuPDF install failed")
-
-try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "python-pptx", 
-                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
-    print("✅ python-pptx installed")
-except:
-    print("⚠️ python-pptx install failed")
-
-try:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl", 
-                          "--break-system-packages", "--upgrade", "--no-warn-script-location", "--timeout=30"], timeout=45)
-    print("✅ openpyxl installed")
-except:
-    print("⚠️ openpyxl install failed")
-
-def simple_convert_to_docx(input_path, output_path):
-    """Fast PDF to DOCX conversion"""
-    # Try pdf2docx first - fastest method
-    try:
-        from pdf2docx import Converter
-        print("📄 Using pdf2docx...")
-        cv = Converter(input_path)
-        cv.convert(output_path)
-        cv.close()
-        
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            print(f"✅ pdf2docx success: {os.path.getsize(output_path)} bytes")
-            return True
-    except Exception as e:
-        print(f"❌ pdf2docx failed: {e}")
-    
-    # Fallback to PyMuPDF
-    try:
-        import fitz
-        from docx import Document
-        
-        print("📝 Using PyMuPDF fallback...")
-        pdf_doc = fitz.open(input_path)
-        doc = Document()
-        
-        for page_num in range(min(20, len(pdf_doc))):  # Limit to 20 pages for speed
-            page = pdf_doc.load_page(page_num)
-            text = page.get_text()
-            
-            if page_num > 0:
-                doc.add_page_break()
-            
-            if text.strip():
-                doc.add_paragraph(text)
-        
-        doc.save(output_path)
-        pdf_doc.close()
-        
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            print(f"✅ PyMuPDF success: {os.path.getsize(output_path)} bytes")
-            return True
-    except Exception as e:
-        print(f"❌ PyMuPDF failed: {e}")
-    
-    return False
-
-def simple_convert_to_xlsx(input_path, output_path):
-    """Fast PDF to XLSX conversion"""
-    try:
-        import fitz
-        from openpyxl import Workbook
-        
-        print("📊 Converting to Excel...")
-        pdf_doc = fitz.open(input_path)
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "PDF_Data"
-        
-        row = 1
-        for page_num in range(min(10, len(pdf_doc))):  # Limit to 10 pages for speed
-            page = pdf_doc.load_page(page_num)
-            text = page.get_text()
-            
-            if text.strip():
-                lines = [line.strip() for line in text.split('\\n') if line.strip()]
-                for line in lines[:50]:  # Limit lines per page
-                    # Simple column detection
-                    if '\\t' in line:
-                        cols = line.split('\\t')
-                    elif '  ' in line:
-                        cols = line.split('  ')
-                    else:
-                        cols = [line]
-                    
-                    for col_idx, col_value in enumerate(cols[:10], 1):  # Max 10 columns
-                        ws.cell(row=row, column=col_idx, value=col_value.strip())
-                    row += 1
-                    
-                    if row > 1000:  # Limit total rows
-                        break
-            
-            if row > 1000:
-                break
-        
-        wb.save(output_path)
-        pdf_doc.close()
-        
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            print(f"✅ Excel conversion success: {os.path.getsize(output_path)} bytes")
-            return True
-    except Exception as e:
-        print(f"❌ Excel conversion failed: {e}")
-    
-    return False
-
-def simple_convert_to_pptx(input_path, output_path):
-    """Fast PDF to PPTX conversion"""
-    try:
-        import fitz
-        from pptx import Presentation
-        from pptx.util import Inches
-        
-        print("🎯 Converting to PowerPoint...")
-        pdf_doc = fitz.open(input_path)
-        prs = Presentation()
-        
-        for page_num in range(min(15, len(pdf_doc))):  # Limit to 15 slides for speed
-            page = pdf_doc.load_page(page_num)
-            text = page.get_text()
-            
-            # Create slide
-            slide_layout = prs.slide_layouts[1]  # Title and Content
-            slide = prs.slides.add_slide(slide_layout)
-            
-            # Add title
-            title = slide.shapes.title
-            title.text = f"Page {page_num + 1}"
-            
-            # Add content
-            if text.strip():
-                content = slide.placeholders[1]
-                text_frame = content.text_frame
-                text_frame.text = text[:500]  # Limit text length
-        
-        prs.save(output_path)
-        pdf_doc.close()
-        
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            print(f"✅ PowerPoint conversion success: {os.path.getsize(output_path)} bytes")
-            return True
-    except Exception as e:
-        print(f"❌ PowerPoint conversion failed: {e}")
-    
-    return False
-
-def convert_pdf(input_path, output_path, format_type):
-    """Main conversion function - optimized for speed"""
-    print(f"🚀 Starting OPTIMIZED conversion: {format_type}")
-    print(f"📂 Input: {input_path}")
-    print(f"📁 Output: {output_path}")
-    
-    if not os.path.exists(input_path):
-        print(f"❌ Input file not found: {input_path}")
-        return False
-    
-    file_size = os.path.getsize(input_path)
-    print(f"📊 Input file size: {file_size} bytes")
-    
-    success = False
-    
-    if format_type == 'docx':
-        success = simple_convert_to_docx(input_path, output_path)
-    elif format_type == 'xlsx':
-        success = simple_convert_to_xlsx(input_path, output_path)
-    elif format_type == 'pptx':
-        success = simple_convert_to_pptx(input_path, output_path)
-    else:
-        print(f"❌ Unsupported format: {format_type}")
-        return False
-    
-    if success and os.path.exists(output_path):
-        file_size = os.path.getsize(output_path)
-        print(f"🎉 OPTIMIZED CONVERSION COMPLETED! Output: {file_size} bytes")
-        return True
-    else:
-        print(f"❌ Optimized conversion failed for {format_type}")
-        return False
+def premium_convert_to_docx(input_path, output_path):
     """Premium PDF to DOCX conversion using multiple high-quality methods"""
     print(f"🚀 Starting PREMIUM PDF to DOCX conversion...")
     
@@ -1681,547 +1499,148 @@ def extract_structured_text_data(text, page_num):
     return False
 
 def premium_convert_to_pptx(input_path, output_path):
-    """ULTIMATE PDF to PPTX conversion with professional design, smart layout, and multimedia support"""
-    print(f"🚀 Starting ULTIMATE PDF to PPTX conversion with advanced AI-like features...")
+    """Simplified but reliable PDF to PPTX conversion with better error handling"""
+    print(f"🚀 Starting PREMIUM PDF to PPTX conversion...")
     
-    # Method 1: Professional-grade conversion with smart design and layout
+    # Method 1: Simplified reliable conversion
     try:
         import fitz  # PyMuPDF
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Cm
-        from pptx.enum.text import PP_ALIGN, WD_ALIGN_PARAGRAPH
+        from pptx.util import Inches, Pt
+        from pptx.enum.text import PP_ALIGN
         from pptx.dml.color import RGBColor
-        from pptx.enum.shapes import MSO_SHAPE
-        from pptx.enum.dml import MSO_THEME_COLOR
-        from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
         import io
-        import re
-        import tempfile
-        import json
         
-        print("🎨 Using ULTIMATE PyMuPDF + python-pptx (AI-Enhanced Professional Method)...")
+        print("📋 Using simplified PyMuPDF + python-pptx method...")
         
         pdf_doc = fitz.open(input_path)
-        
-        # Use a modern professional template
         prs = Presentation()
         
-        # Set optimal slide dimensions (16:9 widescreen for modern presentations)
-        prs.slide_width = Inches(13.33)
-        prs.slide_height = Inches(7.5)
+        # Use standard 16:9 slide size
+        prs.slide_width = Inches(10)
+        prs.slide_height = Inches(5.625)
         
-        # Analyze entire document for intelligent content organization
-        document_analysis = {
-            'total_pages': len(pdf_doc),
-            'has_tables': False,
-            'has_images': False,
-            'text_density': 0,
-            'main_topics': [],
-            'color_scheme': {'primary': None, 'secondary': None},
-            'font_hierarchy': {}
-        }
+        # Create title slide
+        title_slide = prs.slides.add_slide(prs.slide_layouts[0])
+        title_slide.shapes.title.text = "PDF Presentation"
+        if len(title_slide.placeholders) > 1:
+            title_slide.placeholders[1].text = f"Converted from PDF • {len(pdf_doc)} pages"
         
-        # Pre-analyze document for smart organization
-        all_text_content = ""
-        for page_num in range(len(pdf_doc)):
-            page = pdf_doc.load_page(page_num)
-            page_text = page.get_text()
-            all_text_content += page_text + " "
-            
-            # Check for images
-            if page.get_images():
-                document_analysis['has_images'] = True
-            
-            # Analyze text structure
-            text_dict = page.get_text("dict")
-            blocks = text_dict.get("blocks", [])
-            for block in blocks:
-                if 'lines' in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            font_size = span.get('size', 12)
-                            if font_size >= 16:
-                                text = span.get('text', '').strip()
-                                if len(text) > 10 and text not in document_analysis['main_topics']:
-                                    document_analysis['main_topics'].append(text[:50])
-        
-        # Create intelligent title slide
-        title_slide_layout = prs.slide_layouts[0]  # Title Slide
-        title_slide = prs.slides.add_slide(title_slide_layout)
-        
-        # Smart title extraction
-        main_title = "Professional Presentation"
-        subtitle = f"Converted from PDF • {document_analysis['total_pages']} Pages"
-        
-        if document_analysis['main_topics']:
-            main_title = document_analysis['main_topics'][0]
-            if len(document_analysis['main_topics']) > 1:
-                subtitle = document_analysis['main_topics'][1][:100]
-        
-        title_slide.shapes.title.text = main_title
-        if hasattr(title_slide, 'placeholders') and len(title_slide.placeholders) > 1:
-            title_slide.placeholders[1].text = subtitle
-        
-        # Enhanced title formatting
-        title_shape = title_slide.shapes.title
-        title_frame = title_shape.text_frame
-        title_para = title_frame.paragraphs[0]
-        title_para.font.size = Pt(36)
-        title_para.font.bold = True
-        title_para.font.color.rgb = RGBColor(31, 73, 125)  # Professional blue
-        title_para.alignment = PP_ALIGN.CENTER
-        
-        # Create agenda/overview slide if multiple topics
-        if len(document_analysis['main_topics']) > 2:
-            agenda_layout = prs.slide_layouts[1]  # Title and Content
-            agenda_slide = prs.slides.add_slide(agenda_layout)
-            agenda_slide.shapes.title.text = "Overview"
-            
-            content_box = agenda_slide.placeholders[1]
-            text_frame = content_box.text_frame
-            text_frame.clear()
-            
-            for i, topic in enumerate(document_analysis['main_topics'][:8]):  # Max 8 topics
-                para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                para.text = f"• {topic}"
-                para.font.size = Pt(18)
-                para.space_after = Pt(12)
-                para.font.color.rgb = RGBColor(68, 84, 106)
-        
-        # Process each page with intelligent content detection and professional formatting
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            print(f"🔍 Analyzing page {page_num + 1} with AI-enhanced content detection...")
+            print(f"📄 Processing page {page_num + 1}/{len(pdf_doc)}")
             
-            # Advanced content analysis with better structure detection
-            text_dict = page.get_text("dict", flags=fitz.TEXTFLAGS_TEXT)
-            blocks = text_dict.get("blocks", [])
+            # Create slide with title and content layout
+            slide_layout = prs.slide_layouts[1]  # Title and Content
+            slide = prs.slides.add_slide(slide_layout)
             
-            # Extract images with enhanced processing
-            image_list = page.get_images()
+            # Set basic title
+            slide.shapes.title.text = f"Page {page_num + 1}"
             
-            # Advanced content categorization
-            content_structure = {
-                'headings': [],
-                'body_text': [],
-                'bullet_points': [],
-                'quotes': [],
-                'code_blocks': [],
-                'tables': [],
-                'images': [],
-                'charts': []
-            }
+            # Try to get text content
+            text = page.get_text()
             
-            # Intelligent text analysis
-            for block in blocks:
-                if 'lines' in block:
-                    block_content = {
-                        'text': "",
-                        'font_sizes': [],
-                        'colors': [],
-                        'positions': [],
-                        'formatting': {'bold': False, 'italic': False}
-                    }
-                    
-                    for line in block["lines"]:
-                        line_text = ""
-                        for span in line["spans"]:
-                            text = span['text'].strip()
-                            if text:
-                                line_text += text + " "
-                                block_content['font_sizes'].append(span.get('size', 12))
-                                
-                                # Extract formatting
-                                flags = span.get('flags', 0)
-                                if flags & 2**4:  # Bold
-                                    block_content['formatting']['bold'] = True
-                                if flags & 2**1:  # Italic
-                                    block_content['formatting']['italic'] = True
-                        
-                        if line_text.strip():
-                            block_content['text'] += line_text.strip() + "\\n"
-                    
-                    if block_content['text'].strip():
-                        avg_font_size = sum(block_content['font_sizes']) / len(block_content['font_sizes']) if block_content['font_sizes'] else 12
-                        text_content = block_content['text'].strip()
-                        
-                        # Categorize content intelligently
-                        if avg_font_size >= 18 or block_content['formatting']['bold']:
-                            content_structure['headings'].append({
-                                'text': text_content,
-                                'font_size': avg_font_size,
-                                'formatting': block_content['formatting']
-                            })
-                        elif text_content.startswith(('•', '-', '*', '○', '▪', '▫')) or '\\n•' in text_content:
-                            # Split bullet points
-                            bullets = [line.strip() for line in text_content.split('\\n') if line.strip()]
-                            content_structure['bullet_points'].extend(bullets)
-                        elif text_content.startswith(('"', '"', '"')) or 'said' in text_content.lower():
-                            content_structure['quotes'].append(text_content)
-                        elif any(keyword in text_content.lower() for keyword in ['def ', 'function', 'class ', 'import ', 'return']):
-                            content_structure['code_blocks'].append(text_content)
-                        else:
-                            content_structure['body_text'].append({
-                                'text': text_content,
-                                'font_size': avg_font_size
-                            })
-            
-            # Process images with professional handling
-            if image_list:
-                print(f"📸 Processing {len(image_list)} images with professional enhancement...")
-                for img_index, img in enumerate(image_list):
-                    try:
-                        xref = img[0]
-                        pix = fitz.Pixmap(pdf_doc, xref)
-                        
-                        if pix.n - pix.alpha < 4:  # Valid image
-                            img_data = pix.tobytes("png")
-                            
-                            # Analyze image for better categorization
-                            img_width, img_height = pix.width, pix.height
-                            aspect_ratio = img_width / img_height
-                            
-                            img_info = {
-                                'data': img_data,
-                                'width': img_width,
-                                'height': img_height,
-                                'aspect_ratio': aspect_ratio,
-                                'type': 'chart' if aspect_ratio > 1.5 else 'image'
-                            }
-                            
-                            if img_info['type'] == 'chart':
-                                content_structure['charts'].append(img_info)
-                            else:
-                                content_structure['images'].append(img_info)
-                        
-                        pix = None
-                    except Exception as img_error:
-                        print(f"⚠️ Image processing error: {img_error}")
-            
-            # Create intelligent slide layout based on content analysis
-            slide = None
-            
-            if content_structure['charts'] and content_structure['headings']:
-                # Chart/data slide
-                slide_layout = prs.slide_layouts[8] if len(prs.slide_layouts) > 8 else prs.slide_layouts[5]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📊 Creating chart/data slide for page {page_num + 1}")
-                
-            elif len(content_structure['bullet_points']) > 3:
-                # Bullet point slide
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📝 Creating bullet point slide for page {page_num + 1}")
-                
-            elif content_structure['images'] and content_structure['body_text']:
-                # Mixed content slide
-                slide_layout = prs.slide_layouts[4] if len(prs.slide_layouts) > 4 else prs.slide_layouts[6]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"🖼️ Creating mixed content slide for page {page_num + 1}")
-                
-            elif content_structure['quotes']:
-                # Quote slide
-                slide_layout = prs.slide_layouts[2] if len(prs.slide_layouts) > 2 else prs.slide_layouts[1]
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"💬 Creating quote slide for page {page_num + 1}")
-                
-            else:
-                # Default content slide
-                slide_layout = prs.slide_layouts[1]  # Title and Content
-                slide = prs.slides.add_slide(slide_layout)
-                print(f"📄 Creating standard content slide for page {page_num + 1}")
-            
-            # Set slide title intelligently
-            slide_title = f"Page {page_num + 1}"
-            if content_structure['headings']:
-                slide_title = content_structure['headings'][0]['text'][:60]
-            elif content_structure['body_text']:
-                first_sentence = content_structure['body_text'][0]['text'].split('.')[0]
-                if len(first_sentence) < 80:
-                    slide_title = first_sentence
-            
-            if slide.shapes.title:
-                slide.shapes.title.text = slide_title
-                
-                # Professional title formatting
-                title_frame = slide.shapes.title.text_frame
-                title_para = title_frame.paragraphs[0]
-                title_para.font.size = Pt(28)
-                title_para.font.bold = True
-                title_para.font.color.rgb = RGBColor(31, 73, 125)
-            
-            # Add content based on structure
-            content_added = False
-            
-            # Handle bullet points professionally
-            if content_structure['bullet_points'] and len(slide.placeholders) > 1:
-                content_box = slide.placeholders[1]
-                text_frame = content_box.text_frame
-                text_frame.clear()
-                
-                for i, bullet in enumerate(content_structure['bullet_points'][:8]):  # Limit bullets
-                    clean_bullet = bullet.lstrip('•-*○▪▫ ').strip()
-                    if clean_bullet:
-                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                        para.text = clean_bullet
-                        para.font.size = Pt(16)
-                        para.space_after = Pt(8)
-                        para.level = 0
-                        para.font.color.rgb = RGBColor(68, 84, 106)
-                
-                content_added = True
-            
-            # Handle body text professionally
-            elif content_structure['body_text'] and not content_added:
-                if len(slide.placeholders) > 1:
-                    content_box = slide.placeholders[1]
-                    text_frame = content_box.text_frame
-                    text_frame.clear()
-                    
-                    # Combine and format body text
-                    combined_text = ""
-                    for text_item in content_structure['body_text'][:3]:  # Limit text blocks
-                        combined_text += text_item['text'] + "\\n\\n"
-                    
-                    # Smart paragraph splitting
-                    paragraphs = [p.strip() for p in combined_text.split('\\n\\n') if p.strip()]
-                    
-                    for i, para_text in enumerate(paragraphs[:4]):  # Max 4 paragraphs
-                        para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                        para.text = para_text
-                        para.font.size = Pt(14)
-                        para.space_after = Pt(10)
-                        para.font.color.rgb = RGBColor(68, 84, 106)
-                    
-                    content_added = True
-            
-            # Handle quotes specially
-            if content_structure['quotes'] and not content_added:
-                quote_text = content_structure['quotes'][0]
-                
-                # Create custom quote box
-                left = Inches(1)
-                top = Inches(2)
-                width = Inches(11)
-                height = Inches(4)
-                
-                quote_box = slide.shapes.add_textbox(left, top, width, height)
-                text_frame = quote_box.text_frame
-                text_frame.text = f'"{quote_text}"'
-                
-                para = text_frame.paragraphs[0]
-                para.font.size = Pt(20)
-                para.font.italic = True
-                para.alignment = PP_ALIGN.CENTER
-                para.font.color.rgb = RGBColor(31, 73, 125)
-                
-                content_added = True
-            
-            # Add images/charts professionally
-            if content_structure['images'] or content_structure['charts']:
-                all_visual_content = content_structure['images'] + content_structure['charts']
-                
-                for i, visual in enumerate(all_visual_content[:2]):  # Max 2 visuals per slide
-                    try:
-                        image_stream = io.BytesIO(visual['data'])
-                        
-                        # Smart positioning based on content
-                        if content_added:
-                            # Side by side with content
-                            left = Inches(7.5)
-                            top = Inches(1.5)
-                            max_width = Inches(5)
-                            max_height = Inches(5)
-                        else:
-                            # Center stage
-                            left = Inches(2)
-                            top = Inches(1.5)
-                            max_width = Inches(9)
-                            max_height = Inches(5.5)
-                        
-                        # Maintain aspect ratio
-                        aspect_ratio = visual['aspect_ratio']
-                        if aspect_ratio > (max_width / max_height):
-                            width = max_width
-                            height = max_width / aspect_ratio
-                        else:
-                            height = max_height
-                            width = max_height * aspect_ratio
-                        
-                        # Add professional border/shadow effect through positioning
-                        slide.shapes.add_picture(
-                            image_stream,
-                            left + (Inches(0.3) * i),
-                            top + (Inches(0.3) * i),
-                            width,
-                            height
-                        )
-                        
-                    except Exception as img_error:
-                        print(f"⚠️ Image placement error: {img_error}")
-            
-            # If no meaningful content, create high-quality page image with professional framing
-            if not content_added and not content_structure['images'] and not content_structure['charts']:
-                print(f"📄 Creating professional page image for page {page_num + 1}")
-                
-                slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
-                
-                # Ultra-high quality rendering
-                mat = fitz.Matrix(4.0, 4.0)  # 4x scaling for exceptional quality
+            try:
+                # Try to add page as image first (more reliable)
+                mat = fitz.Matrix(2.0, 2.0)  # 2x scaling for good quality
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 img_data = pix.tobytes("png")
                 image_stream = io.BytesIO(img_data)
                 
-                # Professional image placement with margins
-                margin = Inches(0.5)
-                available_width = prs.slide_width - (2 * margin)
-                available_height = prs.slide_height - (2 * margin)
+                # Add image to slide with standard positioning
+                left = Inches(1)
+                top = Inches(1.5)
+                width = Inches(8)
+                height = Inches(3.5)
                 
-                page_rect = page.rect
-                aspect_ratio = page_rect.width / page_rect.height
-                slide_aspect = float(available_width) / float(available_height)
+                slide.shapes.add_picture(image_stream, left, top, width, height)
+                print(f"✅ Added page {page_num + 1} as image")
                 
-                if aspect_ratio > slide_aspect:
-                    img_width = available_width
-                    img_height = available_width / aspect_ratio
-                    left = margin
-                    top = margin + (available_height - img_height) / 2
-                else:
-                    img_height = available_height
-                    img_width = available_height * aspect_ratio
-                    left = margin + (available_width - img_width) / 2
-                    top = margin
-                
-                slide.shapes.add_picture(
-                    image_stream,
-                    int(left), int(top),
-                    int(img_width), int(img_height)
-                )
-            
-            print(f"✅ Professional slide {page_num + 1}/{len(pdf_doc)} completed")
-        
-        # Add professional footer and slide numbers
-        for slide_idx, slide in enumerate(prs.slides):
-            if slide_idx > 0:  # Skip title slide
-                try:
-                    # Professional footer
-                    left = prs.slide_width - Inches(1.5)
-                    top = prs.slide_height - Inches(0.4)
-                    width = Inches(1.2)
-                    height = Inches(0.3)
-                    
-                    footer_box = slide.shapes.add_textbox(left, top, width, height)
-                    footer_frame = footer_box.text_frame
-                    footer_frame.text = f"{slide_idx} / {len(prs.slides) - 1}"
-                    footer_para = footer_frame.paragraphs[0]
-                    footer_para.font.size = Pt(10)
-                    footer_para.font.color.rgb = RGBColor(150, 150, 150)
-                    footer_para.alignment = PP_ALIGN.RIGHT
-                except:
-                    pass  # Skip footer if placement fails
-        
-        # Add final summary slide if document is long
-        if len(pdf_doc) > 5:
-            summary_layout = prs.slide_layouts[1]
-            summary_slide = prs.slides.add_slide(summary_layout)
-            summary_slide.shapes.title.text = "Summary"
-            
-            content_box = summary_slide.placeholders[1]
-            text_frame = content_box.text_frame
-            text_frame.clear()
-            
-            summary_points = [
-                f"• Document contains {len(pdf_doc)} pages",
-                f"• Key topics: {', '.join(document_analysis['main_topics'][:3])}",
-                "• Professional conversion completed",
-                "• All content preserved and enhanced"
-            ]
-            
-            for i, point in enumerate(summary_points):
-                para = text_frame.add_paragraph() if i > 0 else text_frame.paragraphs[0]
-                para.text = point
-                para.font.size = Pt(18)
-                para.space_after = Pt(12)
-                para.font.color.rgb = RGBColor(68, 84, 106)
+            except Exception as img_error:
+                print(f"⚠️ Image processing error for page {page_num + 1}: {img_error}")
+                # Fall back to text extraction
+                if text.strip():
+                    try:
+                        content = slide.placeholders[1]
+                        # Limit text to avoid overwhelming the slide
+                        text_content = text[:1500] + "..." if len(text) > 1500 else text
+                        content.text = text_content
+                        print(f"✅ Added page {page_num + 1} as text")
+                    except Exception as text_error:
+                        print(f"⚠️ Text processing error for page {page_num + 1}: {text_error}")
         
         prs.save(output_path)
         pdf_doc.close()
         
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 15000:
-            print(f"✅ ULTIMATE PROFESSIONAL PPTX conversion successful: {os.path.getsize(output_path)} bytes")
-            print(f"🎯 Created {len(prs.slides)} professional slides with intelligent content organization")
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 5000:
+            print(f"✅ PREMIUM PPTX conversion successful: {os.path.getsize(output_path)} bytes")
             return True
             
-    except ImportError:
-        print("📦 Installing Enhanced PyMuPDF and python-pptx...")
+    except ImportError as e:
+        print(f"📦 Missing packages for PPTX conversion: {e}")
+        print("📦 Installing PyMuPDF and python-pptx...")
         if install_package('PyMuPDF') and install_package('python-pptx'):
             return premium_convert_to_pptx(input_path, output_path)
     except Exception as e:
-        print(f"❌ Enhanced PPTX conversion failed: {e}")
+        print(f"❌ PREMIUM PPTX conversion failed: {e}")
+        import traceback
+        traceback.print_exc()  # Print full stack trace for debugging
     
-    # Method 2: Fallback to structured text extraction with better layout
+    # Method 2: Even simpler fallback
     try:
         import fitz
         from pptx import Presentation
-        from pptx.util import Inches, Pt
+        from pptx.util import Inches
         import io
         
-        print("📋 Using Structured Text Extraction Method...")
+        print("📋 Using Simple Fallback Method...")
         
         pdf_doc = fitz.open(input_path)
         prs = Presentation()
-        prs.slide_width = Inches(13.33)
-        prs.slide_height = Inches(7.5)
         
         for page_num in range(len(pdf_doc)):
             page = pdf_doc.load_page(page_num)
             
-            # Get text in a more structured way
-            text_dict = page.get_text("dict")
-            
-            # Create slide
+            # Create simple slide
             slide_layout = prs.slide_layouts[1]  # Title and Content
             slide = prs.slides.add_slide(slide_layout)
+            slide.shapes.title.text = f"Page {page_num + 1}"
             
             # Extract all text
             all_text = page.get_text()
             lines = [line.strip() for line in all_text.split('\\n') if line.strip()]
             
-            if lines:
-                # Use first line as title
-                slide.shapes.title.text = lines[0]
-                
-                # Use remaining lines as content
-                if len(lines) > 1:
-                    content_box = slide.placeholders[1]
-                    text_frame = content_box.text_frame
-                    text_frame.clear()
+            if lines and len(slide.placeholders) > 1:
+                content_box = slide.placeholders[1]
+                # Combine first few lines as content
+                content_text = '\\n'.join(lines[:10])  # Limit to first 10 lines
+                content_box.text = content_text[:800]  # Limit text length
+            elif not lines:
+                # Fallback to page image if no text
+                try:
+                    mat = fitz.Matrix(1.5, 1.5)
+                    pix = page.get_pixmap(matrix=mat, alpha=False)
+                    img_data = pix.tobytes("png")
+                    image_stream = io.BytesIO(img_data)
                     
-                    for i, line in enumerate(lines[1:]):
-                        if i > 0:
-                            text_frame.add_paragraph()
-                        para = text_frame.paragraphs[i] if i < len(text_frame.paragraphs) else text_frame.add_paragraph()
-                        para.text = line
-                        para.font.size = Pt(14)
-            else:
-                # No text, use image
-                slide = prs.slides.add_slide(prs.slide_layouts[6])
-                mat = fitz.Matrix(2.5, 2.5)
-                pix = page.get_pixmap(matrix=mat, alpha=False)
-                img_data = pix.tobytes("png")
-                image_stream = io.BytesIO(img_data)
-                slide.shapes.add_picture(image_stream, 0, 0, prs.slide_width, prs.slide_height)
+                    slide.shapes.add_picture(
+                        image_stream, 
+                        Inches(1), Inches(1.5), 
+                        Inches(8), Inches(4)
+                    )
+                except:
+                    pass  # Skip if image fails
         
         prs.save(output_path)
         pdf_doc.close()
         
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
-            print(f"✅ Structured PPTX conversion successful: {os.path.getsize(output_path)} bytes")
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 3000:
+            print(f"✅ Simple PPTX fallback successful: {os.path.getsize(output_path)} bytes")
             return True
             
     except Exception as e:
-        print(f"❌ Structured PPTX conversion failed: {e}")
+        print(f"❌ Simple PPTX fallback failed: {e}")
     
     return False
 
